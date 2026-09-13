@@ -1,28 +1,33 @@
 {
   "extends": "next/core-web-vitals",
-  "rules": {
-    "no-restricted-imports": ["error", {
-      "paths": [{
-        "name": "@/lib/prisma",
-        "message": "Prisma connects as the table owner and BYPASSES row-level security. It must never serve a homeowner request. Use @/lib/supabase/server (createOwnerClient) in owner routes. See lib/supabase/README.md."
-      }]
-    }]
-  },
   "overrides": [
     {
-      "comment": "Admin and PM surfaces are the only places Prisma belongs.",
       "files": [
-        "app/admin/**",
-        "app/api/admin/**",
-        "app/api/pm/**",
-        "app/api/auth/**",
-        "app/api/cron/**",
-        "lib/auth.ts",
-        "lib/db/**",
-        "prisma/**",
-        "scripts/**"
+        "app/(owner)/**",
+        "app/my/**",
+        "app/api/owner/**",
+        "lib/supabase/client.ts"
       ],
-      "rules": { "no-restricted-imports": "off" }
+      "rules": {
+        "no-restricted-imports": ["error", {
+          "paths": [
+            {
+              "name": "@/lib/prisma",
+              "message": "Prisma connects as the table owner and BYPASSES row-level security, so every policy in supabase/migrations/0001_rls.sql is silently ignored on that connection. One prisma.house.findMany() here serves every client's build to whoever asked. Use createOwnerClient() from @/lib/supabase/server. See lib/supabase/README.md."
+            },
+            {
+              "name": "@prisma/client",
+              "message": "Owner-facing code must not reach the database as the table owner. Use createOwnerClient() from @/lib/supabase/server, which is subject to row-level security."
+            }
+          ],
+          "patterns": [
+            {
+              "group": ["**/lib/prisma"],
+              "message": "Prisma bypasses row-level security. Owner-facing code must use @/lib/supabase/server."
+            }
+          ]
+        }]
+      }
     }
   ]
 }

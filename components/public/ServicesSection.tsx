@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Home, Building2, Hammer, LayoutGrid, Paintbrush, Building, ArrowRight } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Service } from "@/types";
 import { fadeUp, scaleIn, staggerContainer, viewportConfig } from "@/lib/animations";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const ICONS: Record<string, React.ComponentType<any>> = {
+const ICONS: Record<string, LucideIcon> = {
   Home, Building2, Hammer, LayoutGrid, Paintbrush, Building,
 };
 const ICON_NAMES = ["Home", "Building2", "Hammer", "LayoutGrid", "Paintbrush", "Building"];

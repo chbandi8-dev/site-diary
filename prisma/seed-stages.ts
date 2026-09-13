@@ -96,7 +96,8 @@ function slugify(name: string): string {
 }
 
 export async function seedStages(prisma: PrismaClient) {
-  for (const [i, stage] of STAGES.entries()) {
+  for (let i = 0; i < STAGES.length; i++) {
+    const stage = STAGES[i];
     const slug = slugify(stage.name);
     await prisma.stageTemplate.upsert({
       where: { slug },
