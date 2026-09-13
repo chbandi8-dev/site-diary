@@ -3,30 +3,31 @@
   "overrides": [
     {
       "files": [
-        "app/(owner)/**",
         "app/my/**",
-        "app/api/owner/**",
-        "lib/supabase/client.ts"
+        "app/h/**",
+        "app/api/owner/**"
       ],
       "rules": {
-        "no-restricted-imports": ["error", {
-          "paths": [
-            {
-              "name": "@/lib/prisma",
-              "message": "Prisma connects as the table owner and BYPASSES row-level security, so every policy in supabase/migrations/0001_rls.sql is silently ignored on that connection. One prisma.house.findMany() here serves every client's build to whoever asked. Use createOwnerClient() from @/lib/supabase/server. See lib/supabase/README.md."
-            },
-            {
-              "name": "@prisma/client",
-              "message": "Owner-facing code must not reach the database as the table owner. Use createOwnerClient() from @/lib/supabase/server, which is subject to row-level security."
-            }
-          ],
-          "patterns": [
-            {
-              "group": ["**/lib/prisma"],
-              "message": "Prisma bypasses row-level security. Owner-facing code must use @/lib/supabase/server."
-            }
-          ]
-        }]
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@/lib/prisma",
+                "message": "Owner-facing code must read through @/lib/db/owner, whose functions all take a house id resolved from a verified access link. Querying Prisma directly here is how a link to one build becomes a key to all of them."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "lib/db/owner.ts",
+        "lib/owner/**"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
       }
     }
   ]

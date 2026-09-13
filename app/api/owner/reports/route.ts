@@ -1,51 +1,56 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createOwnerClient } from "@/lib/supabase/server";
+import { currentHouse, currentViewer } from "@/lib/owner/session";
+import { createReport, photoBelongsToHouse } from "@/lib/db/owner";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 
 /**
- * An owner raising something.
+ * Someone raising a question, an issue, or maintenance.
  *
- * Goes through the submit_owner_report function rather than an insert. Owners
- * hold no write grant on any table: row-level security can restrict which rows
- * an insert touches, but not which columns, so a direct grant would also let
- * them set a status or a reply. The function is the whole owner-side write
- * surface, and it re-checks the house and the photo itself.
+ * Registration is required first — not for security, but because a report with
+ * nobody attached is one he cannot reply to, which is worse than no report.
+ *
+ * House and author both come from cookies this server set. Neither is read from
+ * the request body, so nothing a caller sends can file a report against another
+ * build or in another person's name.
  */
 
 const body = z.object({
-  houseId: z.string().uuid(),
   kind: z.enum(["question", "issue", "maintenance"]),
   body: z.string().trim().min(1).max(4000),
   photoId: z.string().uuid().optional(),
 });
 
 export async function POST(req: NextRequest) {
+  const access = await currentHouse();
+  if (!access) {
+    return NextResponse.json(
+      { error: "That link has expired. Ask your builder for a new one." },
+      { status: 401 }
+    );
+  }
+
+  const viewer = await currentViewer(access.houseId);
+  if (!viewer) {
+    return NextResponse.json(
+      { error: "Add your name and email first, so your builder knows who to reply to." },
+      { status: 403 }
+    );
+  }
+
   const parsed = body.safeParse(await req.json());
   if (!parsed.success) {
     return NextResponse.json({ error: "Please describe what you've noticed." }, { status: 400 });
   }
 
-  const supabase = createOwnerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
-
-  const { data, error } = await supabase.rpc("submit_owner_report", {
-    p_house_id: parsed.data.houseId,
-    p_kind: parsed.data.kind,
-    p_body: parsed.data.body,
-    p_photo_id: parsed.data.photoId ?? null,
-  });
-
-  if (error) {
-    return NextResponse.json(
-      { error: "That didn't send. Give it another go, or call your builder." },
-      { status: 400 }
-    );
+  // A photo may only be attached if it belongs to this house, so a report
+  // cannot be used to pull an image out of somebody else's build.
+  if (parsed.data.photoId && !(await photoBelongsToHouse(access.houseId, parsed.data.photoId))) {
+    return NextResponse.json({ error: "That photo isn't from your build." }, { status: 400 });
   }
 
-  return NextResponse.json({ id: data }, { status: 201 });
+  const report = await createReport(access.houseId, viewer.id, parsed.data);
+
+  return NextResponse.json(report, { status: 201 });
 }

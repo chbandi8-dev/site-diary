@@ -1,78 +1,95 @@
-# How owners get in, and stay in
+# How owners get in
 
-## The normal path
+There is no sign-in. There is no account, no password, no code.
 
-He opens the house in the admin, taps **Send invite**, and that is it. The owner
-gets an email with a link and a six-digit code. One tap on the link signs them
-in, and they stay signed in on that device until they clear their browsing data.
+## The whole flow
 
-No password is ever created. Homeowners will not sign up for an account, and
-asking them to is how a portal ends up unused.
+**He does:** opens the house, taps **Create link**, pastes it into WhatsApp.
 
-## Why every email carries a code as well as a link
+**They do:** tap it. Their house is there.
 
-Corporate mail scanners, security gateways and link previewers follow URLs in
-email. A single-use sign-in link can therefore be consumed before the person
-ever clicks it, and they then see "this link has already been used" having done
-nothing wrong.
+That's it. Everything else on this page is detail.
 
-At twenty-five owners that is a support call a month for no reason. So the same
-email carries a six-digit code, and `/my/sign-in` accepts it. If the link fails,
-the page says plainly why and offers to send a fresh one — rather than showing a
-dead end.
+## One link per house
 
-## Resending
+Not one per person. It goes into the family group chat and whoever opens it —
+husband, wife, her father who keeps asking — sees the build. No admin work per
+person, which matters because setup burden is what actually kills a rollout
+like this: at an evening per house he would do three and stop.
 
-**Resending is meant to be routine, not exceptional.** Lost the email, new
-phone, changed address, partner who was never added — all one tap on the house
-page.
+## Name and email come second, from them
 
-Each new link invalidates the previous one. That is also how a link that reached
-the wrong inbox gets shut off: send a new one.
+Under the first update there's a card: *want to know when something happens
+here?* They add a name and email, and from then on they're emailed each update.
 
-## Two people on one house
+Three deliberate choices in that:
 
-Both owners get their own sign-in and both see the same page, including each
-other's questions and his replies to either of them. They are one household
-having one conversation, not two separate support tickets — a couple where only
-one of them can see the answer is worse than useless.
+- **It's after the house, not before it.** The moment someone sees photos of
+  their own build is the moment they'll happily hand over an email. Asking first
+  spends that goodwill and loses people at the door.
+- **It's skippable.** Someone who ignores it still sees every update; they just
+  have to come and look. A wall there would cost exactly the people least likely
+  to persist, who are the ones this exists for.
+- **He never types an owner's details.** They type their own, so the address is
+  right — far better than him transcribing from a contract.
 
-Add the second owner's email on the house page and send them an invite. There is
-no limit; a third party such as a project manager or a parent can be added the
-same way.
+Expect most but not all to register. He can see who has, per house, and nudge
+the rest on WhatsApp.
 
-## Revoking
+## The link is access; the email is delivery
 
-**Revoke** on the house page cuts a person off immediately — on their very next
-request, even if they are already signed in, because every database policy
-checks the revocation rather than waiting for a session to expire.
+These are unrelated, and that's the point.
 
-Use it when a house is sold mid-build, when a couple separates, or when a link
-has clearly gone somewhere it shouldn't. It is reversible: **Restore** puts them
-back without needing a new invite.
+A mistyped email costs notifications, never access — the link keeps working.
+That's a far kinder failure than a sign-in, where a wrong address locks someone
+out of their own house.
 
-## Signing in by mobile
+## Raising something needs a name
 
-The sign-in page can take a mobile number instead of an email, but the option
-stays hidden until an SMS provider is configured in Supabase (Authentication ›
-Providers › Phone) and `NEXT_PUBLIC_SMS_ENABLED` is set to `true`.
+Viewing needs nothing. But to ask a question or report a problem they have to
+have registered first — not for security, but because a report with nobody
+attached is one he can't reply to, which is worse than no report at all.
 
-Deliberately off by default: an option that appears and then fails is worse than
-one that isn't offered. SMS also costs roughly $12 a month for this many owners —
-worth it eventually, since text messages get opened and email gets buried, but
-not needed to start.
+## Replacing a link
 
-## A forwarded link
+**Replace link** on the house page issues a new one and kills the old one
+immediately. Use it when a link has gone somewhere it shouldn't, or when the
+original WhatsApp message is long lost.
 
-Assume it will happen — to a partner, a parent, the family group chat, their
-building inspector. Design for it rather than pretending otherwise:
+The link is shown **once**, when it's created. Only a hash of it is stored, so
+it can't be looked up later — which is also why a copy of the database hands
+nobody a working link.
 
-- Links expire in an hour and are single-use, so a forwarded email is usually
-  already dead.
-- Only people he has already set up as owners can request a code at all. A
-  stranger entering an address sees the same screen and receives nothing.
-- If a link does reach the wrong person, sending a new one kills it, and
-  **Revoke** removes the account entirely.
+**Remove** on a registered person stops their notifications and their access on
+their very next request. Reversible.
 
-What a forwarded link cannot do is reach a different house. Scope comes from the
-signed-in identity, never from the URL.
+## What you're accepting
+
+**Anyone holding the URL can see that house.** It will be forwarded — to
+parents, to the group chat, to their building inspector. That's mostly fine, and
+it's the right trade for build photos: the realistic alternative is an owner who
+never opens the portal at all.
+
+What it means in practice: nothing goes on that page he wouldn't want a stranger
+reading. No margins, no subcontractor rates, no other clients.
+
+Mitigations that are built in:
+
+- 32 random bytes, so a link can't be guessed.
+- Only a hash stored, so a database leak grants nothing.
+- The token sits in the URL path, not the query string — query strings reach
+  server logs, analytics and referrer headers far more readily.
+- Pages served through a link send `Referrer-Policy: no-referrer`, so it can't
+  leak through an outbound click.
+- After it's redeemed the browser is redirected to a clean URL, so the token
+  stops showing in the address bar and in screenshots.
+- Every open is logged with a timestamp and a count, which is the one thing
+  link-only access would otherwise give up.
+- A link is bound to one house at issue time. Nothing in the URL can widen it.
+
+## The one place friction comes back
+
+When variation approvals land, someone tapping **approve** on a $14,000 change
+gets a one-time code to their email for that action alone. It's money and it's
+evidence in a dispute, so it deserves more than a forwarded link — but only 1%
+of visits pay for it instead of 100%.

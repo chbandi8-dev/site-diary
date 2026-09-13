@@ -321,9 +321,11 @@ model Owner {
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  /// When they registered themselves through the house link.
+  registeredAt DateTime? @map("registered_at") @db.Timestamptz(3)
+
   houses        HouseOwner[]
   ownerReports  OwnerReport[]
-  accessLinks   AccessLink[]
   variations    Variation[]
   notifications NotificationLog[]
 
@@ -331,38 +333,38 @@ model Owner {
   @@map("owners")
 }
 
-/// A permanent, personal link to one house.
+/// One permanent link per house.
 ///
-/// The owner signs in to nothing. They tap the link once — from an email, a
-/// text, a bookmark, whatever — and they are looking at their build. It keeps
-/// working on a new phone, after clearing cookies, a year later.
+/// The builder creates a house, taps "get link", and pastes it into WhatsApp.
+/// That is the whole setup — he never types an owner's name or email, because
+/// the people who receive it fill that in themselves. Setup burden is what
+/// actually kills a rollout like this: at an evening per house he would do
+/// three and stop.
 ///
-/// That convenience is bought with an explicit trade: THE LINK IS THE
-/// CREDENTIAL. Anyone holding the URL can see that house. For build progress
-/// this is the right call — the realistic alternative is an owner who never
-/// opens the portal because signing in is friction — but it means:
+/// One link per house rather than per person, so it can go into the family
+/// group chat and whoever opens it — husband, wife, her father who keeps
+/// asking — sees the build and can register themselves for updates.
 ///
-///   - The token is 32 random bytes, so it cannot be guessed.
-///   - Only its SHA-256 hash is stored, so a database leak does not hand
-///     anybody a working link.
-///   - It lives in the path rather than the query string, because query
-///     strings turn up in server logs and analytics far more readily.
-///   - It is rotatable. Issuing a new link kills the old one, which is the
-///     remedy when a link reaches the wrong inbox.
-///   - Pages served through it send `Referrer-Policy: no-referrer`, so the
-///     token cannot leak to a third party through an outbound click.
+/// The trade is explicit: THE LINK IS THE CREDENTIAL. Anyone holding the URL
+/// can see that house. For build photos and progress that is the right call,
+/// because the realistic alternative is an owner who never opens the portal at
+/// all. It is bought with:
 ///
-/// Scope is bound at issue time. A link is for one house and one person, and
-/// nothing in the URL can widen it.
+///   - 32 random bytes, so a token cannot be guessed.
+///   - Only the SHA-256 hash stored, so a copy of this table hands nobody a
+///     working link, and a lost link is rotated rather than looked up.
+///   - The token in the URL path, not the query string — query strings reach
+///     server logs, analytics and referrer headers far more readily.
+///   - Rotation, which invalidates the previous link. That is the remedy when
+///     one reaches the wrong inbox.
+///   - Access logging, which link-only access would otherwise give up.
 model AccessLink {
   id         String    @id @default(uuid()) @db.Uuid
   houseId    String    @map("house_id") @db.Uuid
-  ownerId    String    @map("owner_id") @db.Uuid
-  /// SHA-256 of the token. The token itself is shown once, at creation, and
-  /// is not recoverable afterwards — rotate rather than look it up.
+  /// SHA-256 of the token. The token is shown once, at creation, and is not
+  /// recoverable afterwards.
   tokenHash  String    @unique @map("token_hash")
-  /// Last four characters of the token, purely so he can tell two links apart
-  /// in the admin list.
+  /// Last four characters, so he can tell a current link from a rotated one.
   hint       String
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(3)
@@ -370,10 +372,8 @@ model AccessLink {
   revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
 
   house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
-  owner Owner @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
-  @@index([houseId])
-  @@index([ownerId])
+  @@index([houseId, revokedAt])
   @@map("access_links")
 }
 

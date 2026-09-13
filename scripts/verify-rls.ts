@@ -23,23 +23,12 @@
 import { PrismaClient } from "@prisma/client";
 import { createClient } from "@supabase/supabase-js";
 
-/** Tables that are meant to have RLS on and no policies: unreachable by owners. */
-const INTENTIONALLY_UNREACHABLE = new Set([
-  "users",
-  "projects",
-  "services",
-  "testimonials",
-  "site_content",
-  "messages",
-  "internal_notes",
-  "house_owners",
-  "notification_logs",
-  "evidence_events",
-  "weather_days",
-  "stage_estimates",
-  "message_templates",
-  "_prisma_migrations",
-]);
+/**
+ * Every table is meant to be unreachable by the public roles. Homeowners hold a
+ * link, not a database session, so nothing in here should carry a policy — a
+ * policy would imply some role is expected to reach the table directly, and
+ * none is.
+ */
 
 const prisma = new PrismaClient();
 const failures: string[] = [];
@@ -69,64 +58,35 @@ async function checkRowSecurityEnabled() {
   }
 }
 
-async function checkPoliciesExist() {
-  console.log("\n2. Every RLS table has a policy, or is deliberately unreachable");
-  const rows = await prisma.$queryRaw<{ tablename: string }[]>`
-    select t.tablename
-    from pg_tables t
-    where t.schemaname = 'public'
-      and t.rowsecurity = true
-      and not exists (
-        select 1 from pg_policies p
-        where p.schemaname = 'public' and p.tablename = t.tablename
-      )
-    order by t.tablename
-  `;
-  const unexpected = rows.filter((r) => !INTENTIONALLY_UNREACHABLE.has(r.tablename));
-  for (const r of unexpected) {
-    fail(
-      `${r.tablename} has RLS on but no policy, and is not on the deny list. ` +
-        `Either write a policy or add it to INTENTIONALLY_UNREACHABLE with a reason.`
-    );
-  }
-  if (unexpected.length === 0) {
-    pass(`${rows.length} table(s) intentionally unreachable, all accounted for`);
-  }
-}
-
-async function checkNoPermissiveAllPolicies() {
-  console.log("\n3. No policy grants blanket access");
-  const rows = await prisma.$queryRaw<
-    { tablename: string; policyname: string; cmd: string; qual: string | null }[]
-  >`
-    select tablename, policyname, cmd, qual
-    from pg_policies
+async function checkNoPolicies() {
+  console.log("\n2. No table grants direct access to a public role");
+  const rows = await prisma.$queryRaw<{ tablename: string; policyname: string }[]>`
+    select tablename, policyname from pg_policies
     where schemaname = 'public'
-      and cmd = 'ALL'
     order by tablename
   `;
   for (const r of rows) {
     fail(
-      `${r.tablename}.${r.policyname} is FOR ALL. Write one policy per command ` +
-        `so a read grant never silently becomes a write grant.`
+      `${r.tablename} has policy "${r.policyname}". Owners hold a link, not a ` +
+        `database session — nothing should reach these tables directly. If this ` +
+        `is deliberate, the owner access model has changed and this check needs ` +
+        `rewriting rather than silencing.`
     );
   }
+  if (rows.length === 0) pass("no policies — every table is application-only");
+}
 
-  // `using (true)` is legitimate only for shared reference data.
-  const allowedTrue = new Set(["stage_templates"]);
-  const wide = await prisma.$queryRaw<{ tablename: string; policyname: string }[]>`
-    select tablename, policyname from pg_policies
-    where schemaname = 'public' and qual = 'true'
-    order by tablename
+async function checkNoPublicSchemaAccess() {
+  console.log("\n3. The public roles cannot use the schema at all");
+  const rows = await prisma.$queryRaw<{ grantee: string }[]>`
+    select distinct grantee::text as grantee
+    from information_schema.role_table_grants
+    where table_schema = 'public' and grantee in ('anon', 'authenticated')
   `;
-  for (const r of wide) {
-    if (!allowedTrue.has(r.tablename)) {
-      fail(`${r.tablename}.${r.policyname} uses "using (true)" — it matches every row.`);
-    }
+  for (const r of rows) {
+    fail(`${r.grantee} still holds table grants in public. Re-run 0001_lockdown.sql.`);
   }
-  if (rows.length === 0 && wide.every((r) => allowedTrue.has(r.tablename))) {
-    pass("no FOR ALL policies, no unexpected using(true)");
-  }
+  if (rows.length === 0) pass("anon and authenticated hold no table grants");
 }
 
 async function checkSecurityInvokerViews() {
@@ -180,8 +140,8 @@ async function main() {
   console.log("Verifying row-level security\n" + "=".repeat(46));
   try {
     await checkRowSecurityEnabled();
-    await checkPoliciesExist();
-    await checkNoPermissiveAllPolicies();
+    await checkNoPolicies();
+    await checkNoPublicSchemaAccess();
     await checkSecurityInvokerViews();
     await checkAnonReadsNothing();
   } finally {

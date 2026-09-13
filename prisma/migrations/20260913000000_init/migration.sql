@@ -176,8 +176,23 @@ CREATE TABLE "owners" (
     "notify_by_sms" BOOLEAN NOT NULL DEFAULT false,
     "created_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ(3) NOT NULL,
+    "registered_at" TIMESTAMPTZ(3),
 
     CONSTRAINT "owners_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "access_links" (
+    "id" UUID NOT NULL,
+    "house_id" UUID NOT NULL,
+    "token_hash" TEXT NOT NULL,
+    "hint" TEXT NOT NULL,
+    "created_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "last_used_at" TIMESTAMPTZ(3),
+    "use_count" INTEGER NOT NULL DEFAULT 0,
+    "revoked_at" TIMESTAMPTZ(3),
+
+    CONSTRAINT "access_links_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -211,6 +226,7 @@ CREATE TABLE "house_stages" (
     "house_id" UUID NOT NULL,
     "template_id" UUID,
     "name" TEXT NOT NULL,
+    "phase" TEXT,
     "position" DOUBLE PRECISION NOT NULL,
     "is_payment_milestone" BOOLEAN NOT NULL DEFAULT false,
     "planned_days" INTEGER,
@@ -520,6 +536,12 @@ CREATE UNIQUE INDEX "owners_email_key" ON "owners"("email");
 CREATE INDEX "owners_auth_user_id_idx" ON "owners"("auth_user_id");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "access_links_token_hash_key" ON "access_links"("token_hash");
+
+-- CreateIndex
+CREATE INDEX "access_links_house_id_revoked_at_idx" ON "access_links"("house_id", "revoked_at");
+
+-- CreateIndex
 CREATE INDEX "house_owners_owner_id_house_id_idx" ON "house_owners"("owner_id", "house_id");
 
 -- CreateIndex
@@ -617,6 +639,9 @@ CREATE UNIQUE INDEX "weather_days_house_id_date_key" ON "weather_days"("house_id
 
 -- CreateIndex
 CREATE INDEX "evidence_events_subject_subject_id_at_idx" ON "evidence_events"("subject", "subject_id", "at");
+
+-- AddForeignKey
+ALTER TABLE "access_links" ADD CONSTRAINT "access_links_house_id_fkey" FOREIGN KEY ("house_id") REFERENCES "houses"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "house_owners" ADD CONSTRAINT "house_owners_house_id_fkey" FOREIGN KEY ("house_id") REFERENCES "houses"("id") ON DELETE CASCADE ON UPDATE CASCADE;

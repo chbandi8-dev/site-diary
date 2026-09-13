@@ -4,7 +4,13 @@ import Reveal from "./Reveal";
 import PhotoGrid from "./PhotoGrid";
 
 type Photo = { id: string; key: string; caption: string | null; url: string };
-type Update = { id: string; kind: string; body: string; occurred_at: string; photos: Photo[] };
+type Update = {
+  id: string;
+  kind: string;
+  body: string;
+  occurredAt: Date;
+  photos: Photo[];
+};
 
 const KIND_LABEL: Record<string, string> = {
   milestone: "Milestone",
@@ -14,16 +20,16 @@ const KIND_LABEL: Record<string, string> = {
   decision: "Needs your decision",
 };
 
-function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-AU", {
+function formatWhen(d: Date): string {
+  return d.toLocaleDateString("en-AU", {
     weekday: "long",
     day: "numeric",
     month: "long",
   });
 }
 
-function monthOf(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-AU", { month: "long", year: "numeric" });
+function monthOf(d: Date): string {
+  return d.toLocaleDateString("en-AU", { month: "long", year: "numeric" });
 }
 
 export default function Timeline({ updates }: { updates: Update[] }) {
@@ -55,7 +61,7 @@ export default function Timeline({ updates }: { updates: Update[] }) {
         />
 
         {updates.map((u, i) => {
-          const month = monthOf(u.occurred_at);
+          const month = monthOf(u.occurredAt);
           const showMonth = month !== lastMonth;
           lastMonth = month;
 
@@ -80,10 +86,10 @@ export default function Timeline({ updates }: { updates: Update[] }) {
 
                 <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                   <time
-                    dateTime={u.occurred_at}
+                    dateTime={u.occurredAt.toISOString()}
                     className="font-mono text-[11px] uppercase tracking-[0.12em] text-text/45"
                   >
-                    {formatWhen(u.occurred_at)}
+                    {formatWhen(u.occurredAt)}
                   </time>
                   {KIND_LABEL[u.kind] && (
                     <span className="font-mono text-[10px] uppercase tracking-[0.13em] text-accent-primary">
@@ -103,7 +109,7 @@ export default function Timeline({ updates }: { updates: Update[] }) {
                   {u.body}
                 </p>
 
-                <PhotoGrid photos={u.photos} label={formatWhen(u.occurred_at)} />
+                <PhotoGrid photos={u.photos} label={formatWhen(u.occurredAt)} />
               </Reveal>
             </li>
           );

@@ -180,12 +180,14 @@ export async function ownersOf(houseId: string): Promise<Recipient[]> {
     select: { owner: { select: { id: true, name: true, email: true, notifyByEmail: true } } },
   });
 
+  // Plenty of people open the link and never register, which is fine — they
+  // simply check the page. Only those who gave us an address get emailed.
   return links
-    .filter((l) => l.owner.notifyByEmail)
+    .filter((l) => l.owner.notifyByEmail && Boolean(l.owner.email))
     .map((l) => ({
       audience: "owner" as const,
       ownerId: l.owner.id,
-      email: l.owner.email,
+      email: l.owner.email!,
       name: l.owner.name,
     }));
 }

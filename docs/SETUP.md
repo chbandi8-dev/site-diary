@@ -33,10 +33,9 @@ Then change the admin password through the admin UI.
    "your house changed" emails land in spam and the product fails silently.
 3. Set `RESEND_API_KEY` and `EMAIL_FROM`.
 
-Also point **Supabase Auth** at Resend as custom SMTP (Authentication →
-Settings → SMTP). Supabase's built-in auth mail is rate-limited to a handful
-per hour and is explicitly not for production — sign-in codes would fail
-intermittently with no error the owner can act on.
+Supabase Auth is not used at all — owners hold a house link rather than an
+account — so there is no auth SMTP to configure. Resend only sends update
+emails and the weekly digest.
 
 ## 3. Supabase
 
@@ -47,11 +46,9 @@ intermittently with no error the owner can act on.
      connections exhaust the pool, and Prisma's prepared statements break on
      the pooler without that flag.
    - `DIRECT_URL` — port **5432**. Used by `prisma migrate` only.
-3. From Settings → API, take `NEXT_PUBLIC_SUPABASE_URL`,
-   `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`.
-
-The anon key is public by design — it ships in the browser bundle. Row-level
-security is what protects the data, which is why step 5 is not optional.
+Supabase is used purely as a Postgres host here. No API keys are needed:
+nothing in the browser talks to it, because every owner page is rendered by
+this application after resolving their link.
 
 ## 4. Photo storage
 
@@ -66,7 +63,7 @@ security is what protects the data, which is why step 5 is not optional.
 
 ```bash
 npm run db:deploy                              # Prisma: creates the tables
-psql "$DIRECT_URL" -f supabase/migrations/0001_rls.sql
+psql "$DIRECT_URL" -f supabase/migrations/0001_lockdown.sql
 psql "$DIRECT_URL" -f supabase/migrations/0002_notify.sql
 npm run db:verify-rls                          # must pass before you deploy
 ```
@@ -75,10 +72,9 @@ npm run db:verify-rls                          # must pass before you deploy
 tables and silently skip every policy. The script has been removed from
 `package.json`; do not reintroduce it.
 
-`db:verify-rls` fails on any public table with row security off, any policy
-granting blanket access, any view that is not `security_invoker`, and any row an
-anonymous client can read. Run it in CI and after every deploy. It is the only
-check that tests what this product actually promises.
+`db:verify-rls` fails on any public table with row security off, on any policy
+at all — nothing should reach these tables directly — and on any table grant
+still held by the public roles. Run it in CI and after every deploy.
 
 Then seed:
 
@@ -114,20 +110,11 @@ shutdown — precisely when anxious owners check their page.
 
 ## 8. Adding a house
 
-There is no UI for this yet. Per house:
+Import them from his voice note — see `RECORDING-THE-HOUSES.md` and
+`scripts/import-houses.ts`. He never enters owner details; the owners add their
+own name and email after opening the link.
 
-1. Create the `houses` row.
-2. Create each `owners` row with their real email. Leave `auth_user_id` null —
-   it links itself when they first sign in.
-3. Link them in `house_owners`.
-4. Copy the stage templates into `house_stages`, marking anything that doesn't
-   apply as `not_applicable`.
-5. Invite the owner in Supabase Auth (Authentication → Users → Invite) using
-   the same email.
-
-Sign-in uses `shouldCreateUser: false`, so only people already set up as owners
-can get a code. A stranger entering an address sees the same screen and receives
-nothing.
+Then per house: open it in the admin, tap **Create link**, paste into WhatsApp.
 
 ## Before the pilot: check these on his actual phone
 
@@ -138,6 +125,6 @@ Both reviewers flagged these as untestable from a desk:
 - **His camera format.** Settings → Camera → Formats. "High Efficiency" gives
   HEIC, which Safari decodes and Chrome/Android do not. "Most Compatible"
   avoids the whole class of problem.
-- **Owner isolation, in a private window.** When he is logged into `/admin` in
-  the same browser his staff cookie is sent to `/my` too, so testing there
-  makes isolation look correct for the wrong reason.
+- **A link in a private window.** Open a house link where no admin session
+  exists, to confirm the owner view really is reachable by the link alone and
+  really does show only that house.

@@ -2,7 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { OwnerReportRow } from "@/lib/db/owner";
+type Report = {
+  id: string;
+  kind: string;
+  status: string;
+  body: string;
+  createdAt: string;
+  replyBody: string | null;
+  fromName: string;
+};
+
+type Viewer = { id: string; name: string; email: string | null } | null;
 
 const KINDS = [
   {
@@ -35,11 +45,11 @@ function formatWhen(iso: string): string {
 }
 
 export default function ReportPanel({
-  houseId,
+  viewer,
   reports,
 }: {
-  houseId: string;
-  reports: OwnerReportRow[];
+  viewer: Viewer;
+  reports: Report[];
 }) {
   const router = useRouter();
   const [kind, setKind] = useState<(typeof KINDS)[number]["value"]>("question");
@@ -60,7 +70,6 @@ export default function ReportPanel({
       if (file) {
         const form = new FormData();
         form.append("file", file);
-        form.append("houseId", houseId);
         const up = await fetch("/api/owner/photos", { method: "POST", body: form });
         if (!up.ok) throw new Error((await up.json()).error ?? "That photo wouldn't upload.");
         photoId = (await up.json()).photoId;
@@ -69,7 +78,7 @@ export default function ReportPanel({
       const res = await fetch("/api/owner/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ houseId, kind, body, photoId }),
+        body: JSON.stringify({ kind, body, photoId }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "That didn't send.");
 
@@ -110,6 +119,11 @@ export default function ReportPanel({
         </div>
       )}
 
+      {!viewer ? (
+        <p className="border-l-[3px] border-accent-secondary bg-surface/50 px-4 py-3 leading-relaxed">
+          Add your name and email above first, so your builder knows who to reply to.
+        </p>
+      ) : (
       <form onSubmit={submit} className="flex flex-col gap-5">
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text/50">
@@ -179,6 +193,7 @@ export default function ReportPanel({
           {busy ? "Sending…" : "Send to your builder"}
         </button>
       </form>
+      )}
 
       {reports.length > 0 && (
         <div className="mt-12">
@@ -188,19 +203,20 @@ export default function ReportPanel({
               <li key={r.id} className="border-t border-text/10 py-5">
                 <div className="mb-1.5 flex flex-wrap items-baseline gap-x-3">
                   <time className="font-mono text-[11px] uppercase tracking-[0.12em] text-text/45">
-                    {formatWhen(r.created_at)}
+                    {formatWhen(r.createdAt)}
                   </time>
                   <span className="font-mono text-[10px] uppercase tracking-[0.13em] text-accent-primary">
                     {STATUS_LABEL[r.status] ?? r.status}
                   </span>
                 </div>
                 <p className="max-w-prose leading-relaxed">{r.body}</p>
-                {r.reply_body && (
+                <p className="mt-1 text-sm text-text/45">— {r.fromName}</p>
+                {r.replyBody && (
                   <div className="mt-3 border-l-2 border-accent-secondary pl-4">
                     <p className="font-mono text-[10px] uppercase tracking-[0.13em] text-text/45">
                       Your builder replied
                     </p>
-                    <p className="mt-1 max-w-prose leading-relaxed">{r.reply_body}</p>
+                    <p className="mt-1 max-w-prose leading-relaxed">{r.replyBody}</p>
                   </div>
                 )}
               </li>

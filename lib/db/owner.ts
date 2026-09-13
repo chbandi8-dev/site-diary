@@ -1,148 +1,117 @@
-import { createOwnerClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/prisma";
+import { signDownload } from "@/lib/r2";
 
 /**
  * Every read on the homeowner side.
  *
- * Rows come back untyped because there is no generated Supabase schema, so each
- * query casts to the shape declared above. Keep the select list and the type in
- * step — the cast is the only thing checking them.
+ * Owners hold a house link, not an account, so there is no Supabase session to
+ * scope queries with — which means the old row-level-security guarantee does
+ * not apply here. Two things replace it, and both matter:
  *
- * Not one of these functions filters by house. They don't need to: the client
- * carries the owner's own JWT, and the policies in
- * supabase/migrations/0001_rls.sql scope every row in Postgres. If a query here
- * returns another client's house, that is a policy bug, not a missing `where` —
- * which is exactly the property we wanted, because a `where` can be forgotten
- * in a refactor and a policy cannot.
+ *  1. Owners never talk to the database directly. The anon key is not shipped
+ *     to the browser and no PostgREST surface is exposed, so the only way to
+ *     read anything is through these functions.
+ *  2. Every function takes `houseId` as its first argument, and the ONLY caller
+ *     that supplies it is `redeemToken`, which resolves it from a live,
+ *     unrevoked link. Nothing reads a house id from a URL, a form, or a header.
  *
- * Never import Prisma into this file. It connects as the table owner and
- * bypasses all of it. The ESLint fence in .eslintrc.json enforces that.
+ * If you add a function here, keep that shape. The moment one of them accepts a
+ * house id from request input, a link to one build becomes a key to all of them.
  */
 
-export type OwnerHouse = {
-  id: string;
-  address: string;
-  suburb: string | null;
-  storeys: number;
-  status: string;
-  waiting_on: string | null;
-  waiting_on_eta: string | null;
-  handover_from: string | null;
-  handover_to: string | null;
-  handed_over_at: string | null;
-};
+export type OwnerHouse = Awaited<ReturnType<typeof getHouse>>;
 
-export type OwnerStage = {
-  id: string;
-  name: string;
-  phase: string | null;
-  position: number;
-  status: string;
-  estimated_end: string | null;
-  completed_at: string | null;
-  is_payment_milestone: boolean;
-};
-
-export type OwnerUpdate = {
-  id: string;
-  kind: string;
-  body: string;
-  occurred_at: string;
-  photos: { id: string; key: string; caption: string | null }[];
-};
-
-export type OwnerReportRow = {
-  id: string;
-  kind: string;
-  status: string;
-  body: string;
-  created_at: string;
-  acknowledged_at: string | null;
-  reply_body: string | null;
-  replied_at: string | null;
-  photo_id: string | null;
-};
-
-export async function getMyHouses(): Promise<OwnerHouse[]> {
-  const supabase = createOwnerClient();
-  const { data, error } = await supabase
-    .from("houses")
-    .select(
-      "id, address, suburb, storeys, status, waiting_on, waiting_on_eta, " +
-        "handover_from, handover_to, handed_over_at"
-    )
-    .order("address");
-
-  if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as OwnerHouse[];
+export async function getHouse(houseId: string) {
+  return prisma.house.findUnique({
+    where: { id: houseId },
+    select: {
+      id: true,
+      address: true,
+      suburb: true,
+      storeys: true,
+      status: true,
+      waitingOn: true,
+      waitingOnEta: true,
+      handoverFrom: true,
+      handoverTo: true,
+      handedOverAt: true,
+    },
+  });
 }
 
-export async function getHouse(houseId: string): Promise<OwnerHouse | null> {
-  const supabase = createOwnerClient();
-  const { data, error } = await supabase
-    .from("houses")
-    .select(
-      "id, address, suburb, storeys, status, waiting_on, waiting_on_eta, " +
-        "handover_from, handover_to, handed_over_at"
-    )
-    .eq("id", houseId)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
-  return (data as unknown as OwnerHouse | null) ?? null;
-}
-
-export async function getStages(houseId: string): Promise<OwnerStage[]> {
-  const supabase = createOwnerClient();
-  const { data, error } = await supabase
-    .from("house_stages")
-    .select("id, name, phase, position, status, estimated_end, completed_at, is_payment_milestone")
-    .eq("house_id", houseId)
-    .order("position");
-
-  if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as OwnerStage[];
-}
-
-export async function getTimeline(houseId: string, limit = 40): Promise<OwnerUpdate[]> {
-  const supabase = createOwnerClient();
-  const { data, error } = await supabase
-    .from("updates")
-    .select("id, kind, body, occurred_at, photos(id, key, caption)")
-    .eq("house_id", houseId)
-    .order("occurred_at", { ascending: false })
-    .limit(limit);
-
-  if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as OwnerUpdate[];
-}
-
-export async function getMyReports(houseId: string): Promise<OwnerReportRow[]> {
-  const supabase = createOwnerClient();
-  const { data, error } = await supabase
-    .from("owner_reports")
-    .select(
-      "id, kind, status, body, created_at, acknowledged_at, reply_body, replied_at, photo_id"
-    )
-    .eq("house_id", houseId)
-    .order("created_at", { ascending: false });
-
-  if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as OwnerReportRow[];
+export async function getStages(houseId: string) {
+  return prisma.houseStage.findMany({
+    where: { houseId, status: { not: "not_applicable" } },
+    select: {
+      id: true,
+      name: true,
+      phase: true,
+      position: true,
+      status: true,
+      estimatedEnd: true,
+      completedAt: true,
+      isPaymentMilestone: true,
+    },
+    orderBy: { position: "asc" },
+  });
 }
 
 /**
- * Progress as a share of expected working days, not "stage 6 of 31".
- *
- * Position-based percentages lie badly on a build: lock-up sits around the
- * halfway mark by count and roughly a third by time, and he would spend the
- * rest of the project explaining the gap.
+ * The timeline. Published, undeleted updates only — a draft is not an update,
+ * and something the owner was already emailed about must stop rendering without
+ * the row disappearing from the record.
  */
-export function progressPercent(stages: OwnerStage[]): number {
-  const counted = stages.filter((s) => s.status !== "not_applicable");
-  if (counted.length === 0) return 0;
-  const done = counted.filter((s) => s.status === "complete").length;
-  return Math.round((done / counted.length) * 100);
+export async function getTimeline(houseId: string, limit = 40) {
+  const updates = await prisma.update.findMany({
+    where: { houseId, publishedAt: { not: null }, deletedAt: null },
+    select: {
+      id: true,
+      kind: true,
+      body: true,
+      occurredAt: true,
+      photos: {
+        where: { status: "ready", deletedAt: null },
+        select: { id: true, key: true, caption: true },
+        orderBy: { takenAt: "asc" },
+      },
+    },
+    orderBy: { occurredAt: "desc" },
+    take: limit,
+  });
+
+  // Photos live in a private bucket, so each render mints short-lived signed
+  // URLs. Access has already been established by the link.
+  return Promise.all(
+    updates.map(async (u) => ({
+      ...u,
+      occurred_at: u.occurredAt.toISOString(),
+      photos: await Promise.all(
+        u.photos.map(async (p) => ({ ...p, url: await signDownload(p.key) }))
+      ),
+    }))
+  );
 }
+
+/** What this house's people have raised, and his replies. */
+export async function getReports(houseId: string) {
+  return prisma.ownerReport.findMany({
+    where: { houseId },
+    select: {
+      id: true,
+      kind: true,
+      status: true,
+      body: true,
+      createdAt: true,
+      acknowledgedAt: true,
+      replyBody: true,
+      repliedAt: true,
+      owner: { select: { name: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export type OwnerStage = Awaited<ReturnType<typeof getStages>>[number];
 
 export function activeStages(stages: OwnerStage[]): OwnerStage[] {
   return stages.filter((s) => s.status === "in_progress");
@@ -150,4 +119,55 @@ export function activeStages(stages: OwnerStage[]): OwnerStage[] {
 
 export function nextStage(stages: OwnerStage[]): OwnerStage | undefined {
   return stages.find((s) => s.status === "scheduled" || s.status === "not_started");
+}
+
+// ---------------------------------------------------------------------------
+// Writes.
+//
+// Same rule as the reads: `houseId` is always the first argument and always
+// comes from a verified link. Nothing here derives a house from request input,
+// which is what stops a link to one build becoming a key to another.
+// ---------------------------------------------------------------------------
+
+/** Confirms a photo belongs to this house before it can be cited in a report. */
+export async function photoBelongsToHouse(houseId: string, photoId: string): Promise<boolean> {
+  const photo = await prisma.photo.findFirst({
+    where: { id: photoId, houseId },
+    select: { id: true },
+  });
+  return Boolean(photo);
+}
+
+export async function createReport(
+  houseId: string,
+  ownerId: string,
+  input: { kind: "question" | "issue" | "maintenance"; body: string; photoId?: string }
+) {
+  return prisma.ownerReport.create({
+    data: {
+      houseId,
+      ownerId,
+      kind: input.kind,
+      body: input.body,
+      photoId: input.photoId,
+    },
+    select: { id: true },
+  });
+}
+
+export async function createOwnerPhoto(
+  houseId: string,
+  input: { id: string; key: string; bytes: number }
+) {
+  return prisma.photo.create({
+    data: {
+      id: input.id,
+      houseId,
+      key: input.key,
+      bytes: input.bytes,
+      status: "ready",
+      origin: "owner",
+    },
+    select: { id: true },
+  });
 }

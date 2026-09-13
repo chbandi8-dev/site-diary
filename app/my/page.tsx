@@ -1,46 +1,57 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import { getMyHouses } from "@/lib/db/owner";
+import { currentHouse, currentViewer } from "@/lib/owner/session";
+import { getHouse, getStages, getTimeline, getReports, activeStages, nextStage } from "@/lib/db/owner";
+import HouseHeader from "@/components/owner/HouseHeader";
+import Timeline from "@/components/owner/Timeline";
+import RegisterCard from "@/components/owner/RegisterCard";
+import ReportPanel from "@/components/owner/ReportPanel";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Most owners have exactly one house, so send them straight to it rather than
- * making them tap through a list of one.
- */
-export default async function MyBuilds() {
-  const houses = await getMyHouses();
+export default async function MyBuild() {
+  const access = await currentHouse();
+  if (!access) redirect("/my/no-access");
 
-  if (houses.length === 0) {
-    return (
-      <main className="mx-auto max-w-3xl px-5 py-16">
-        <h1 className="mb-3 font-display text-3xl tracking-tight">Nothing here yet</h1>
-        <p className="max-w-prose leading-relaxed text-text/65">
-          Your builder hasn&apos;t linked a build to this email address yet. If you think that&apos;s
-          wrong, give them a call — it takes them a minute to fix.
-        </p>
-      </main>
-    );
-  }
+  const house = await getHouse(access.houseId);
+  if (!house) redirect("/my/no-access");
 
-  if (houses.length === 1) redirect(`/my/${houses[0].id}`);
+  const [stages, updates, reports, viewer] = await Promise.all([
+    getStages(access.houseId),
+    getTimeline(access.houseId),
+    getReports(access.houseId),
+    currentViewer(access.houseId),
+  ]);
 
   return (
-    <main className="mx-auto max-w-3xl px-5 py-12">
-      <h1 className="mb-8 font-display text-3xl tracking-tight">Your builds</h1>
-      <ul className="flex flex-col gap-3">
-        {houses.map((h) => (
-          <li key={h.id}>
-            <Link
-              href={`/my/${h.id}`}
-              className="block border border-text/10 bg-white px-5 py-4 transition-colors hover:border-accent-primary"
-            >
-              <span className="font-display text-xl tracking-tight">{h.address}</span>
-              {h.suburb && <span className="block text-sm text-text/55">{h.suburb}</span>}
-            </Link>
-          </li>
-        ))}
-      </ul>
+    <main className="mx-auto max-w-3xl px-5 pb-24 pt-12 sm:pt-16">
+      <HouseHeader
+        house={house}
+        stages={stages}
+        active={activeStages(stages)}
+        next={nextStage(stages)}
+      />
+
+      {/*
+        Placed after the header, never before it. The moment someone sees photos
+        of their own build is the moment they will happily hand over an email —
+        asking first spends that goodwill and loses people at the door.
+      */}
+      {!viewer && <RegisterCard />}
+
+      <Timeline updates={updates} />
+
+      <ReportPanel
+        viewer={viewer}
+        reports={reports.map((r) => ({
+          id: r.id,
+          kind: r.kind,
+          status: r.status,
+          body: r.body,
+          createdAt: r.createdAt.toISOString(),
+          replyBody: r.replyBody,
+          fromName: r.owner.name,
+        }))}
+      />
     </main>
   );
 }

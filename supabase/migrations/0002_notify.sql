@@ -1,13 +1,13 @@
 -- ============================================================================
 -- Notification triggers.
 --
--- These live in the database rather than in a route handler so that they fire
--- however the row was created — the owner portal's RPC, an admin action, a
--- backfill script. A notification that depends on remembering to call it is a
--- notification that eventually doesn't happen, and the failure is silent.
+-- In the database rather than a route handler so they fire however the row was
+-- created — the owner portal, an admin action, a backfill. A notification that
+-- depends on someone remembering to call it eventually doesn't happen, and the
+-- failure is silent.
 --
--- The triggers only ENQUEUE. Sending is done by /api/cron/notifications, so a
--- provider outage never blocks an owner from filing a report.
+-- These only ENQUEUE. /api/cron/notifications sends, so a provider outage can
+-- never stop an owner filing a report.
 -- ============================================================================
 
 create or replace function public.notify_staff_of_owner_report()
@@ -25,15 +25,12 @@ begin
     else                    v_address || ' — owner asked a question'
   end;
 
-  for v_staff in
-    select id, email from public.users where role in ('admin', 'pm')
-  loop
+  for v_staff in select id, email from public.users where role in ('admin', 'pm') loop
     insert into public.notification_logs
       (id, audience, house_id, user_id, report_id, channel, status, dedupe_key, subject)
     values
       (gen_random_uuid(), 'staff', new.house_id, v_staff.id, new.id, 'email', 'queued',
        'report:' || new.id || ':' || v_staff.email, v_subject)
-    -- Keyed on the report and recipient, so a replayed insert cannot double-send.
     on conflict (dedupe_key) do nothing;
   end loop;
 
@@ -46,8 +43,9 @@ create trigger owner_report_notifies_staff
   for each row execute function public.notify_staff_of_owner_report();
 
 -- ---------------------------------------------------------------------------
--- The reply back to the owner. Fires when a reply is first written, not on
--- every subsequent edit.
+-- The reply back. Fires when a reply is first written, not on later edits, and
+-- only where that person actually gave us an email — plenty of viewers never
+-- register, and they simply check the page instead.
 -- ---------------------------------------------------------------------------
 create or replace function public.notify_owner_of_reply()
 returns trigger language plpgsql security definer set search_path = public as $$
@@ -64,7 +62,7 @@ begin
   select email, notify_by_email into v_email, v_notify
     from public.owners where id = new.owner_id;
 
-  if not coalesce(v_notify, true) then
+  if v_email is null or not coalesce(v_notify, true) then
     return new;
   end if;
 

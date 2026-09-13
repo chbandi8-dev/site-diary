@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import QuickSend from "@/components/admin/QuickSend";
-import OwnerAccess from "@/components/admin/OwnerAccess";
+import HouseLink from "@/components/admin/HouseLink";
 
 export const dynamic = "force-dynamic";
 
@@ -22,8 +22,13 @@ export default async function HouseCapture({ params }: { params: { id: string } 
       owners: {
         select: {
           revokedAt: true,
-          owner: { select: { id: true, name: true, email: true, authUserId: true } },
+          owner: { select: { id: true, name: true, email: true } },
         },
+      },
+      accessLinks: {
+        where: { revokedAt: null },
+        select: { hint: true, lastUsedAt: true, useCount: true },
+        take: 1,
       },
       updates: {
         select: { id: true, body: true, occurredAt: true, publishedAt: true, kind: true },
@@ -54,13 +59,16 @@ export default async function HouseCapture({ params }: { params: { id: string } 
 
       <QuickSend houseId={house.id} />
 
-      <OwnerAccess
+      <HouseLink
         houseId={house.id}
-        owners={house.owners.map((o) => ({
+        hasLink={house.accessLinks.length > 0}
+        linkHint={house.accessLinks[0]?.hint ?? null}
+        lastUsedAt={house.accessLinks[0]?.lastUsedAt?.toISOString() ?? null}
+        useCount={house.accessLinks[0]?.useCount ?? 0}
+        registered={house.owners.map((o) => ({
           ownerId: o.owner.id,
           name: o.owner.name,
           email: o.owner.email,
-          hasSignedIn: Boolean(o.owner.authUserId),
           revoked: Boolean(o.revokedAt),
         }))}
       />

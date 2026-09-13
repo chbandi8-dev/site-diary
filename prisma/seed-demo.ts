@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { issueHouseLink } from "../lib/owner/session";
 
 /**
  * Example data, so the site can be walked through before any real build is in it.
@@ -163,7 +164,7 @@ export async function seedDemo(prisma: PrismaClient) {
       const record = await prisma.owner.upsert({
         where: { email: owner.email },
         update: {},
-        create: { name: owner.name, email: owner.email },
+        create: { name: owner.name, email: owner.email, registeredAt: new Date() },
       });
       await prisma.houseOwner.create({ data: { houseId: house.id, ownerId: record.id } });
     }
@@ -228,6 +229,7 @@ export async function seedDemo(prisma: PrismaClient) {
   }
 
   console.log(`✓ ${HOUSES.length} example houses seeded (emails end in @${DEMO_TAG})`);
+  console.log("  Open a house in the admin and tap Create link to walk the owner view.");
 }
 
 if (require.main === module) {

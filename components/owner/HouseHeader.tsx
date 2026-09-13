@@ -1,13 +1,22 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-import type { OwnerHouse, OwnerStage } from "@/lib/db/owner";
+import type { OwnerStage } from "@/lib/db/owner";
+
+type House = {
+  address: string;
+  suburb: string | null;
+  storeys: number;
+  waitingOn: string | null;
+  waitingOnEta: Date | null;
+  handoverFrom: Date | null;
+  handoverTo: Date | null;
+};
 import PhaseRail, { toPhases } from "./PhaseRail";
 
-function formatRange(from: string | null, to: string | null): string | null {
+function formatRange(from: Date | null, to: Date | null): string | null {
   if (!from && !to) return null;
-  const fmt = (d: string) =>
-    new Date(d).toLocaleDateString("en-AU", { month: "long", year: "numeric" });
+  const fmt = (d: Date) => d.toLocaleDateString("en-AU", { month: "long", year: "numeric" });
   if (from && to) {
     const a = fmt(from);
     const b = fmt(to);
@@ -16,8 +25,8 @@ function formatRange(from: string | null, to: string | null): string | null {
   return fmt((from ?? to)!);
 }
 
-function formatDay(d: string): string {
-  return new Date(d).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" });
+function formatDay(d: Date): string {
+  return d.toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" });
 }
 
 const ease = [0.22, 0.61, 0.36, 1] as const;
@@ -28,13 +37,13 @@ export default function HouseHeader({
   active,
   next,
 }: {
-  house: OwnerHouse;
+  house: House;
   stages: OwnerStage[];
   active: OwnerStage[];
   next?: OwnerStage;
 }) {
   const reduced = useReducedMotion();
-  const handover = formatRange(house.handover_from, house.handover_to);
+  const handover = formatRange(house.handoverFrom, house.handoverTo);
 
   const rise = (delay: number) =>
     reduced
@@ -66,7 +75,7 @@ export default function HouseHeader({
         The question that generates most of his incoming calls, answered before
         it's asked. Placed above everything else on purpose.
       */}
-      {house.waiting_on && (
+      {house.waitingOn && (
         <motion.div
           {...rise(0.12)}
           className="mt-8 border-l-[3px] border-accent-primary bg-surface/45 px-5 py-4"
@@ -75,9 +84,9 @@ export default function HouseHeader({
             Right now
           </p>
           <p className="mt-1.5 leading-relaxed">
-            Waiting on {house.waiting_on}
-            {house.waiting_on_eta && (
-              <span className="text-text/65">, expected {formatDay(house.waiting_on_eta)}</span>
+            Waiting on {house.waitingOn}
+            {house.waitingOnEta && (
+              <span className="text-text/65">, expected {formatDay(house.waitingOnEta)}</span>
             )}
           </p>
         </motion.div>
@@ -96,7 +105,7 @@ export default function HouseHeader({
           {
             term: "Next",
             value: next ? next.name : "Finishing up",
-            note: next?.estimated_end ? `estimated ${formatDay(next.estimated_end)}` : null,
+            note: next?.estimatedEnd ? `estimated ${formatDay(next.estimatedEnd)}` : null,
           },
           {
             term: "Handover",
