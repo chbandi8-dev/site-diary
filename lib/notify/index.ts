@@ -174,8 +174,10 @@ function compose(row: PendingRow): string {
   return [row.update?.body ?? "", "", `See the photos and full history: ${link}`].join("\n");
 }
 
+export type OwnerRecipient = Extract<Recipient, { audience: "owner" }>;
+
 /** Everyone who should hear about something at this house. */
-export async function ownersOf(houseId: string): Promise<Recipient[]> {
+export async function ownersOf(houseId: string): Promise<OwnerRecipient[]> {
   const links = await prisma.houseOwner.findMany({
     where: { houseId, revokedAt: null },
     select: { owner: { select: { id: true, name: true, email: true, notifyByEmail: true } } },

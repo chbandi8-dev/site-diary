@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { redeemToken, rememberLink } from "@/lib/owner/session";
+import { redeemToken, rememberLink, recordVisit } from "@/lib/owner/session";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +22,7 @@ export async function GET(req: NextRequest, { params }: { params: { token: strin
   }
 
   rememberLink(params.token);
+  await recordVisit(access.linkId);
 
   const response = NextResponse.redirect(new URL("/my", req.url));
   // Stops the token leaking to a third party through an outbound click.

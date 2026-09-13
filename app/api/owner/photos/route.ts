@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { currentHouse, currentViewer } from "@/lib/owner/session";
 import { createOwnerPhoto } from "@/lib/db/owner";
 import { photoKey, putObject } from "@/lib/r2";
+import { overLimit, wrongOrigin } from "@/lib/owner/guard";
 
 export const dynamic = "force-dynamic";
 
@@ -21,10 +22,17 @@ export const dynamic = "force-dynamic";
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 export async function POST(req: NextRequest) {
+  if (wrongOrigin(req)) {
+    return NextResponse.json({ error: "Request blocked." }, { status: 403 });
+  }
+
   const access = await currentHouse();
   if (!access) {
     return NextResponse.json({ error: "That link has expired." }, { status: 401 });
   }
+
+  const limited = await overLimit(access.houseId, "photos");
+  if (limited) return limited;
   if (!(await currentViewer(access.houseId))) {
     return NextResponse.json({ error: "Add your name and email first." }, { status: 403 });
   }

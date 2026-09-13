@@ -29,6 +29,7 @@ const KINDS = [
     value: "maintenance",
     label: "Needs attention",
     hint: "Something that's come up since handover.",
+    afterHandover: true,
   },
 ] as const;
 
@@ -44,12 +45,87 @@ function formatWhen(iso: string): string {
   return new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short" });
 }
 
+/**
+ * Registering, inline, right where they hit the wall.
+ *
+ * Previously this pointed at the card higher up the page — which is dismissible,
+ * so someone who skipped it and then spotted something odd in a photo was sent
+ * to a card that no longer existed. A dead end at the exact moment they wanted
+ * to talk to their builder.
+ */
+function InlineRegister() {
+  const router = useRouter();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/owner/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "That didn't save.");
+      router.refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "That didn't save. Try again.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="border-l-[3px] border-accent-secondary bg-surface/40 p-5">
+      <p className="mb-4 leading-relaxed">
+        Just your name and email first, so your builder knows who he&apos;s replying to.
+      </p>
+      {error && <p className="mb-3 text-sm text-accent-primary">{error}</p>}
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <label htmlFor="inline-name" className="sr-only">Your name</label>
+        <input
+          id="inline-name"
+          required
+          placeholder="Your name"
+          autoComplete="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="flex-1 border border-text/15 bg-white px-4 py-3 focus:border-accent-primary focus:outline-none"
+        />
+        <label htmlFor="inline-email" className="sr-only">Email</label>
+        <input
+          id="inline-email"
+          type="email"
+          required
+          placeholder="Email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="flex-1 border border-text/15 bg-white px-4 py-3 focus:border-accent-primary focus:outline-none"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={busy || !name.trim() || !email.includes("@")}
+        className="mt-4 min-h-[48px] bg-accent-primary px-6 font-medium text-white disabled:opacity-50"
+      >
+        {busy ? "Saving…" : "Continue"}
+      </button>
+    </form>
+  );
+}
+
 export default function ReportPanel({
   viewer,
   reports,
+  handedOver = false,
 }: {
   viewer: Viewer;
   reports: Report[];
+  handedOver?: boolean;
 }) {
   const router = useRouter();
   const [kind, setKind] = useState<(typeof KINDS)[number]["value"]>("question");
@@ -95,11 +171,11 @@ export default function ReportPanel({
 
   return (
     <section className="mt-14 border-t border-text/10 pt-10">
-      <h2 className="mb-2 font-display text-2xl tracking-tight">Tell your builder something</h2>
+      <h2 className="mb-2 font-display text-2xl tracking-tight">Ask a question, or flag something</h2>
       <p className="mb-7 max-w-prose leading-relaxed text-text/65">
         Anything at all — a question, something that looks wrong in a photo, or something that
-        needs attention. He&apos;ll see it straight away and you&apos;ll get a reply. Questions are
-        answered within one business day; he&apos;s on site Monday to Friday.
+        needs attention. He&apos;ll see it straight away. He&apos;s on site Monday to Friday, so
+        answers usually come back in the evening — give him a day or two.
       </p>
 
       {sent && (
@@ -120,16 +196,14 @@ export default function ReportPanel({
       )}
 
       {!viewer ? (
-        <p className="border-l-[3px] border-accent-secondary bg-surface/50 px-4 py-3 leading-relaxed">
-          Add your name and email above first, so your builder knows who to reply to.
-        </p>
+        <InlineRegister />
       ) : (
       <form onSubmit={submit} className="flex flex-col gap-5">
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text/50">
             What is it
           </legend>
-          {KINDS.map((k) => (
+          {KINDS.filter((k) => !("afterHandover" in k) || handedOver).map((k) => (
             <label
               key={k.value}
               className="flex cursor-pointer items-start gap-3 border border-text/10 bg-white px-4 py-3 has-[:checked]:border-accent-primary"

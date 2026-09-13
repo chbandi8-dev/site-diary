@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 /**
@@ -14,15 +14,39 @@ import { useRouter } from "next/navigation";
  * they just have to come and look. A wall here would cost the people least
  * likely to persist, who are exactly the ones this product exists for.
  */
+const DISMISSED_KEY = "sd_reg_dismissed";
+const ASK_AGAIN_AFTER_DAYS = 30;
+
 export default function RegisterCard() {
   const router = useRouter();
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState<boolean | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (dismissed) return null;
+  // Dismissal lived only in React state, so the card came back on every page
+  // load, forever, for exactly the people least likely to persist. It now stays
+  // gone for a month.
+  useEffect(() => {
+    try {
+      const at = Number(window.localStorage.getItem(DISMISSED_KEY) ?? 0);
+      setDismissed(Date.now() - at < ASK_AGAIN_AFTER_DAYS * 86_400_000);
+    } catch {
+      setDismissed(false);
+    }
+  }, []);
+
+  function dismiss() {
+    try {
+      window.localStorage.setItem(DISMISSED_KEY, String(Date.now()));
+    } catch {
+      /* private browsing — it just reappears next time */
+    }
+    setDismissed(true);
+  }
+
+  if (dismissed !== false) return null;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,12 +69,12 @@ export default function RegisterCard() {
   return (
     <section className="mt-10 border border-text/12 bg-white p-6 sm:p-7">
       <h2 className="font-display text-xl leading-snug tracking-tight sm:text-2xl">
-        Want to know when something happens here?
+        Want an email when there&apos;s news about your build?
       </h2>
       <p className="mt-2 max-w-prose leading-relaxed text-text/65">
-        Add your details and we&apos;ll email you each time there&apos;s an update — photos,
-        progress, anything we need from you. Otherwise you&apos;re welcome to just check back
-        whenever you like.
+        Usually a couple of times a week, plus a short summary on Fridays. Photos, progress, and
+        anything we need from you — nothing else, and nobody else gets your address. You&apos;re
+        welcome to skip this and just check back whenever you like.
       </p>
 
       {error && (
@@ -100,7 +124,7 @@ export default function RegisterCard() {
           </button>
           <button
             type="button"
-            onClick={() => setDismissed(true)}
+            onClick={dismiss}
             className="text-sm text-text/55 underline underline-offset-4 hover:text-text"
           >
             Not now

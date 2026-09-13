@@ -35,6 +35,7 @@ export default async function HouseCapture({ params }: { params: { id: string } 
       accessLinks: {
         where: { revokedAt: null },
         select: { hint: true, lastUsedAt: true, useCount: true },
+        orderBy: { createdAt: "desc" },
         take: 1,
       },
       updates: {
@@ -83,6 +84,7 @@ export default async function HouseCapture({ params }: { params: { id: string } 
 
       <HouseLink
         houseId={house.id}
+        address={house.address}
         hasLink={house.accessLinks.length > 0}
         linkHint={house.accessLinks[0]?.hint ?? null}
         lastUsedAt={house.accessLinks[0]?.lastUsedAt?.toISOString() ?? null}

@@ -5,16 +5,21 @@
       "files": [
         "app/my/**",
         "app/h/**",
-        "app/api/owner/**"
+        "app/api/owner/**",
+        "components/owner/**"
       ],
       "rules": {
         "no-restricted-imports": [
           "error",
           {
-            "paths": [
+            "patterns": [
               {
-                "name": "@/lib/prisma",
-                "message": "Owner-facing code must read through @/lib/db/owner, whose functions all take a house id resolved from a verified access link. Querying Prisma directly here is how a link to one build becomes a key to all of them."
+                "group": [
+                  "**/lib/prisma",
+                  "@/lib/prisma",
+                  "@prisma/client"
+                ],
+                "message": "Owner-facing code must read through @/lib/db/owner, whose functions all take a house id resolved from a verified access link. Reaching the database directly here is how a link to one build becomes a key to all of them."
               }
             ]
           }

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
 
-type Photo = { id: string; key: string; caption: string | null; url: string };
+type Photo = { id: string; caption: string | null; url: string };
 
 /**
  * Site photos, and a full-screen view of them.

@@ -31,7 +31,12 @@ export default async function HousesPage() {
         orderBy: { occurredAt: "desc" },
         take: 1,
       },
-      _count: { select: { ownerReports: { where: { status: "submitted" } } } },
+      _count: {
+        select: {
+          ownerReports: { where: { status: "submitted" } },
+          updates: { where: { publishedAt: null, deletedAt: null } },
+        },
+      },
     },
     orderBy: { address: "asc" },
   });
@@ -42,7 +47,14 @@ export default async function HousesPage() {
     const daysQuiet = last
       ? Math.floor((now - last.getTime()) / 86_400_000)
       : Number.POSITIVE_INFINITY;
-    return { ...h, daysQuiet, needsAttention: daysQuiet >= DAYS_QUIET_BEFORE_FLAG || h._count.ownerReports > 0 };
+    return {
+      ...h,
+      daysQuiet,
+      needsAttention:
+        daysQuiet >= DAYS_QUIET_BEFORE_FLAG ||
+        h._count.ownerReports > 0 ||
+        h._count.updates > 0,
+    };
   });
 
   withState.sort((a, b) => Number(b.needsAttention) - Number(a.needsAttention));
@@ -68,12 +80,20 @@ export default async function HousesPage() {
                 <span className="mt-0.5 block truncate text-sm text-white/45">
                   {h.stages.length > 0
                     ? h.stages.map((s) => s.name).join(" · ")
-                    : "No stage underway"}
+                    : "Nothing marked as underway"}
                   {h.waitingOn && ` — waiting on ${h.waitingOn}`}
                 </span>
               </div>
 
               <div className="flex flex-none items-center gap-3">
+                {h._count.updates > 0 && (
+                  <span
+                    className="rounded-full bg-gold/15 px-2.5 py-1 text-xs font-medium text-gold"
+                    title="Written but not sent"
+                  >
+                    {h._count.updates} not sent
+                  </span>
+                )}
                 {h._count.ownerReports > 0 && (
                   <span className="flex items-center gap-1.5 rounded-full bg-gold/15 px-2.5 py-1 text-xs font-medium text-gold">
                     <AlertCircle size={13} aria-hidden="true" />

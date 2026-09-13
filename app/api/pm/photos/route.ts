@@ -111,9 +111,14 @@ export async function PATCH(req: NextRequest) {
 
   const photo = await prisma.photo.findUnique({
     where: { id: parsed.data.photoId },
-    select: { id: true, key: true, status: true },
+    select: { id: true, key: true, status: true, houseId: true },
   });
   if (!photo) return NextResponse.json({ error: "Photo not found" }, { status: 404 });
+  // The key is derived from the house, so confirming one whose key does not
+  // match its row would attach bytes from elsewhere.
+  if (!photo.houseId || !photo.key.startsWith(`houses/${photo.houseId}/`)) {
+    return NextResponse.json({ error: "That photo isn't filed to a house." }, { status: 409 });
+  }
   if (photo.status === "ready") return NextResponse.json({ id: photo.id, status: "ready" });
 
   // Trust the bucket, not the caller. A client that reports success after a

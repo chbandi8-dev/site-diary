@@ -177,7 +177,11 @@ enum NotifyAudience {
 
 enum NotifyStatus {
   queued
+  /// Claimed by a run that is mid-send. Stops a second run picking up the same
+  /// row and emailing an owner twice about one update.
+  sending
   sent
+  /// Retries exhausted. A human should look at these.
   failed
 }
 
@@ -402,7 +406,7 @@ model StageTemplate {
   id                 String  @id @default(uuid()) @db.Uuid
   name               String
   slug               String  @unique
-  position           Float   @unique
+  position           Int     @unique
   /// Owner-facing rollup. Thirty-odd stages is the detail he needs for evidence
   /// and claims; owners see eight or nine phases.
   phase              String
@@ -749,7 +753,7 @@ model NotificationLog {
 
   @@index([ownerId, createdAt])
   @@index([userId, createdAt])
-  @@index([status])
+  @@index([status, nextAttemptAt])
   @@map("notification_logs")
 }
 

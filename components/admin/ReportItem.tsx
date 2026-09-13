@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Image as ImageIcon } from "lucide-react";
+
 
 /**
  * One owner report, with the reply inline.
@@ -12,14 +12,15 @@ import { Image as ImageIcon } from "lucide-react";
  * all, because the owner now knows their message went nowhere.
  */
 export default function ReportItem({
-  id, kind, status, body, hasPhoto, ownerName, createdAt, house,
+  id, kind, status, body, photoUrl, ownerName, ownerEmail, createdAt, house,
 }: {
   id: string;
   kind: string;
   status: string;
   body: string;
-  hasPhoto: boolean;
+  photoUrl: string | null;
   ownerName: string;
+  ownerEmail: string | null;
   createdAt: string;
   house: React.ReactNode;
 }) {
@@ -74,15 +75,24 @@ export default function ReportItem({
         <span className={"font-mono text-[11px] tabular-nums " + (days >= 2 ? "text-gold" : "text-white/35")}>
           {days === 0 ? "today" : `${days}d ago`}
         </span>
-        {hasPhoto && (
-          <span className="flex items-center gap-1 text-[11px] text-white/40">
-            <ImageIcon size={12} aria-hidden="true" /> photo
-          </span>
-        )}
+
       </div>
 
       <p className="leading-relaxed text-white/80">{body}</p>
-      <p className="mt-1.5 text-sm text-white/40">— {ownerName}</p>
+
+      {photoUrl && (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img
+          src={photoUrl}
+          alt={`Photo attached by ${ownerName}`}
+          className="mt-3 max-h-80 w-auto rounded-lg border border-white/10"
+        />
+      )}
+
+      <p className="mt-1.5 text-sm text-white/40">
+        — {ownerName}
+        {ownerEmail && <span className="text-white/25"> · {ownerEmail}</span>}
+      </p>
 
       {!replying ? (
         <button

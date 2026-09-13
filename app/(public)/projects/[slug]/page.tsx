@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { notFound } from "next/navigation";
+import DOMPurify from "isomorphic-dompurify";
 import Image from "next/image";
 import Link from "next/link";
 import { MapPin, Calendar, User, ArrowLeft, CheckCircle } from "lucide-react";
@@ -89,7 +90,9 @@ export default async function ProjectDetailPage({ params }: Props) {
               {/* Rich text */}
               <div
                 className="tiptap-content text-white/70"
-                dangerouslySetInnerHTML={{ __html: project.description }}
+                dangerouslySetInnerHTML={{ // Admin-authored via the rich text editor, but it is stored HTML on a
+                  // public page and the admin surface is the weaker one. Sanitise on render.
+                  __html: DOMPurify.sanitize(project.description) }}
               />
 
               {/* Image gallery */}

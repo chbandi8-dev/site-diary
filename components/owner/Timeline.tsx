@@ -3,7 +3,7 @@
 import Reveal from "./Reveal";
 import PhotoGrid from "./PhotoGrid";
 
-type Photo = { id: string; key: string; caption: string | null; url: string };
+type Photo = { id: string; caption: string | null; url: string };
 type Update = {
   id: string;
   kind: string;

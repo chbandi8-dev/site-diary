@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth-guard";
 import Link from "next/link";
 import ReportItem from "@/components/admin/ReportItem";
+import { signDownload } from "@/lib/r2";
 
 export const dynamic = "force-dynamic";
 
@@ -27,12 +28,21 @@ export default async function ReportsPage() {
       status: true,
       body: true,
       createdAt: true,
-      photoId: true,
+      photo: { select: { key: true } },
       house: { select: { id: true, address: true } },
-      owner: { select: { name: true } },
+      owner: { select: { name: true, email: true } },
     },
     orderBy: { createdAt: "asc" },
   });
+
+  // An owner reporting "this looks wrong" almost always attaches a picture.
+  // Showing him the word "photo" and not the photo breaks the whole flow.
+  const withPhotos = await Promise.all(
+    reports.map(async (r) => ({
+      ...r,
+      photoUrl: r.photo ? await signDownload(r.photo.key) : null,
+    }))
+  );
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -46,15 +56,16 @@ export default async function ReportsPage() {
       </header>
 
       <ol className="flex flex-col gap-3">
-        {reports.map((r) => (
+        {withPhotos.map((r) => (
           <li key={r.id}>
             <ReportItem
               id={r.id}
               kind={KIND_LABEL[r.kind] ?? r.kind}
               status={r.status}
               body={r.body}
-              hasPhoto={Boolean(r.photoId)}
+              photoUrl={r.photoUrl}
               ownerName={r.owner.name}
+              ownerEmail={r.owner.email}
               createdAt={r.createdAt.toISOString()}
               house={
                 <Link href={`/admin/houses/${r.house.id}`} className="hover:text-gold">

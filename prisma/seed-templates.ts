@@ -27,6 +27,12 @@ const TRADES = [
   "plumber", "roofer", "tiler", "painter", "waterproofer", "cabinetmaker",
 ];
 
+/** Handover moves in months, which is also how it is shown to owners. */
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
 const NEXT_DAY = [
   "tomorrow", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
   "early next week", "later next week",
@@ -282,13 +288,158 @@ const T: {
     wantsPhoto: true,
   },
 
+  // ---- Money and dates: the whole category that was missing --------------
+  //
+  // Every one of these drafts rather than sends. They all carry a consequence
+  // the owner will react to, and each is a conversation he should have already
+  // had — the message is the confirmation, not the announcement.
+  {
+    key: "handover-moved",
+    label: "Handover date has moved",
+    body:
+      "I want to be straight with you about timing. We're now looking at {month} for handover " +
+      "rather than what we last discussed, because of {why}. I know that's not what you wanted " +
+      "to hear. Nothing else about the build has changed, and I'll keep you posted as it firms up.",
+    category: "Held up",
+    kind: "delay",
+    autoPublish: false,
+    slots: [
+      { name: "month", label: "Now looking at", options: MONTHS },
+      {
+        name: "why",
+        label: "Because of",
+        options: [
+          "a run of wet weather",
+          "a supplier delay",
+          "waiting on council",
+          "waiting on the certifier",
+          "what we found once we opened up the site",
+          "the variations we've added",
+        ],
+      },
+    ],
+  },
+  {
+    key: "variation-coming",
+    label: "That'll be a variation",
+    body:
+      "That change will be a variation to the contract, so I'll price it and send you the " +
+      "paperwork before anyone does anything. Nothing goes ahead until you've signed it off.",
+    category: "Held up",
+    kind: "message",
+    autoPublish: false,
+  },
+  {
+    key: "claim-coming",
+    label: "Progress claim coming",
+    body:
+      "We've reached the {stage} stage, so the progress claim for it will come through shortly. " +
+      "If you're drawing on a construction loan it's worth giving your bank a heads-up now — they " +
+      "usually want a week or so, and sometimes a valuer's visit.",
+    category: "Held up",
+    kind: "message",
+    autoPublish: false,
+    slots: [
+      {
+        name: "stage",
+        label: "Which claim",
+        options: ["base", "frame", "lock-up", "fixing", "final"],
+      },
+    ],
+  },
+  {
+    key: "latent-condition",
+    label: "Found something on site",
+    body:
+      "We've hit {what} on site, which wasn't something the reports picked up. I'm getting advice " +
+      "on the best way through it and I'll come back to you with what it means for cost and " +
+      "timing before anything goes ahead.",
+    category: "Held up",
+    kind: "delay",
+    autoPublish: false,
+    slots: [
+      {
+        name: "what",
+        label: "What",
+        options: [
+          "rock", "fill that needs removing", "asbestos", "an unmarked service",
+          "groundwater", "poor soil",
+        ],
+      },
+    ],
+    wantsPhoto: true,
+  },
+  {
+    key: "we-need-from-you",
+    label: "Your items due on site",
+    body:
+      "A reminder that your {item} needs to be on site by {when}, otherwise the fit-off has to " +
+      "wait and that pushes everything behind it.",
+    category: "Held up",
+    kind: "decision",
+    slots: [
+      {
+        name: "item",
+        label: "What",
+        options: ["appliances", "tapware", "light fittings", "flooring", "bathroom accessories"],
+      },
+      { name: "when", label: "By", options: NEXT_DAY },
+    ],
+  },
+
+  // ---- Milestones the owner is actually waiting for ----------------------
+  {
+    key: "occupation-certificate",
+    label: "You can move in",
+    body:
+      "The occupation certificate has come through, which is the bit that legally lets you move " +
+      "in. Everything's signed off. Let's sort out a time for handover and the keys.",
+    category: "Milestones",
+    kind: "milestone",
+  },
+
+  // ---- After handover: the plan said not to go dark here -----------------
+  {
+    key: "defect-booked",
+    label: "Booked a defect in",
+    body: "I've booked someone to come back and sort {item} on {when}.",
+    category: "Notes",
+    kind: "message",
+    slots: [
+      {
+        name: "item",
+        label: "What",
+        options: [
+          "the sticking door", "the paint touch-ups", "the cabinetry adjustment",
+          "the tiling", "the shower screen", "the gate", "the plumbing item",
+        ],
+      },
+      { name: "when", label: "When", options: NEXT_DAY },
+    ],
+  },
+  {
+    key: "shutdown",
+    label: "Christmas shutdown",
+    body:
+      "The industry shuts down over Christmas, so the site will be quiet from {from} until " +
+      "{to}. Everything is secured and this break is already built into your dates — it's not a " +
+      "delay. I'll be reachable if anything comes up.",
+    category: "Notes",
+    kind: "message",
+    slots: [
+      { name: "from", label: "From", options: ["mid-December", "the week before Christmas"] },
+      { name: "to", label: "Back", options: ["mid-January", "late January", "early February"] },
+    ],
+  },
+
   // ---- Direct notes ----------------------------------------------------
   {
     key: "site-visit-welcome",
     label: "Invite them to visit",
     body:
-      "If you'd like to come and have a look, let me know a time that suits and " +
-      "I'll meet you there. You'll need closed shoes, and I'll bring a hi-vis for you.",
+      "If you'd like to come and have a look, let me know a time that suits and I'll meet you " +
+      "there. Please don't go on site without me — it's an insurance and safety thing rather than " +
+      "me being precious. You'll need closed shoes, and I'll bring a hi-vis for you.",
     category: "Notes",
     kind: "message",
   },

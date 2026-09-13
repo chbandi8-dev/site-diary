@@ -15,7 +15,17 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
  */
 
 const BUCKET = process.env.R2_BUCKET!;
-const TTL_SECONDS = 60 * 10;
+
+/**
+ * Long enough that a page left open over lunch still shows its photos when the
+ * owner comes back. URLs are minted at render and the page does not revalidate,
+ * so a ten-minute window meant tapping a photo after a break produced a silent
+ * 403 in the lightbox.
+ */
+const TTL_SECONDS = 60 * 60 * 2;
+
+/** Marketing images belong on the public website, not behind a signed URL. */
+const PUBLIC_BUCKET = process.env.R2_PUBLIC_BUCKET ?? BUCKET;
 
 let client: S3Client | null = null;
 
@@ -65,12 +75,13 @@ export function documentKey(houseId: string, documentId: string, filename: strin
 export function signUpload(
   key: string,
   contentType: string,
-  contentLength: number
+  contentLength: number,
+  bucket: "private" | "public" = "private"
 ): Promise<string> {
   return getSignedUrl(
     r2(),
     new PutObjectCommand({
-      Bucket: BUCKET,
+      Bucket: bucket === "public" ? PUBLIC_BUCKET : BUCKET,
       Key: key,
       ContentType: contentType,
       ContentLength: contentLength,

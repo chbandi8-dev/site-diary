@@ -85,8 +85,14 @@ export async function getTimeline(houseId: string, limit = 40) {
     updates.map(async (u) => ({
       ...u,
       occurred_at: u.occurredAt.toISOString(),
+      // `key` is deliberately dropped rather than spread: it publishes the
+      // bucket layout to the browser for no benefit.
       photos: await Promise.all(
-        u.photos.map(async (p) => ({ ...p, url: await signDownload(p.key) }))
+        u.photos.map(async (p) => ({
+          id: p.id,
+          caption: p.caption,
+          url: await signDownload(p.key),
+        }))
       ),
     }))
   );
@@ -137,9 +143,26 @@ export function nextStage(stages: OwnerStage[]): OwnerStage | undefined {
 // ---------------------------------------------------------------------------
 
 /** Confirms a photo belongs to this house before it can be cited in a report. */
+/**
+ * Confirms a photo may be cited in a report.
+ *
+ * Narrower than "belongs to this house": most of his photos are internal
+ * evidence — a defect for a subbie, proof for a claim — and were never
+ * published. An owner may only point at something they can already see, or one
+ * of their own.
+ */
 export async function photoBelongsToHouse(houseId: string, photoId: string): Promise<boolean> {
   const photo = await prisma.photo.findFirst({
-    where: { id: photoId, houseId },
+    where: {
+      id: photoId,
+      houseId,
+      status: "ready",
+      deletedAt: null,
+      OR: [
+        { origin: "owner" },
+        { update: { publishedAt: { not: null }, deletedAt: null } },
+      ],
+    },
     select: { id: true },
   });
   return Boolean(photo);

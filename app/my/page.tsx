@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { currentHouse, currentViewer } from "@/lib/owner/session";
+import { currentHouse, currentViewer, recordVisit } from "@/lib/owner/session";
 import {
   getHouse, getStages, getTimeline, getReports, getBuilder, activeStages, nextStage,
 } from "@/lib/db/owner";
@@ -16,6 +16,8 @@ export default async function MyBuild() {
 
   const house = await getHouse(access.houseId);
   if (!house) redirect("/my/no-access");
+
+  await recordVisit(access.linkId);
 
   const viewer = await currentViewer(access.houseId);
 
@@ -53,6 +55,7 @@ export default async function MyBuild() {
 
       <ReportPanel
         viewer={viewer}
+        handedOver={Boolean(house.handedOverAt)}
         reports={reports.map((r) => ({
           id: r.id,
           kind: r.kind,

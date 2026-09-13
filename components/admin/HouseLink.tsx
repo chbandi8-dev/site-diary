@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Copy, Link2, RefreshCw, ShieldCheck, ShieldOff } from "lucide-react";
+import { Check, Copy, Link2, MailX, RefreshCw, Undo2 } from "lucide-react";
 
 type Registered = {
   ownerId: string;
@@ -25,6 +25,7 @@ type Registered = {
  */
 export default function HouseLink({
   houseId,
+  address,
   hasLink,
   linkHint,
   lastUsedAt,
@@ -32,6 +33,7 @@ export default function HouseLink({
   registered,
 }: {
   houseId: string;
+  address: string;
   hasLink: boolean;
   linkHint: string | null;
   lastUsedAt: string | null;
@@ -107,10 +109,26 @@ export default function HouseLink({
               <code className="min-w-0 flex-1 overflow-x-auto rounded-lg bg-dark px-4 py-3 font-mono text-xs text-gold">
                 {url}
               </code>
+              {/*
+                A bare URL from an unknown number reads as a scam, and
+                copy-then-switch-apps is the clunkiest step in the whole product
+                — this is its entire distribution mechanism.
+              */}
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(
+                  `Hi — this is the page for ${address}. Photos and updates go up here as they happen, ` +
+                    `and you can ask me anything through it: ${url}`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-h-[46px] items-center gap-2 rounded-lg bg-gold px-5 font-medium text-dark"
+              >
+                Send on WhatsApp
+              </a>
               <button
                 type="button"
                 onClick={copy}
-                className="flex min-h-[46px] items-center gap-2 rounded-lg bg-gold px-5 font-medium text-dark"
+                className="flex min-h-[46px] items-center gap-2 rounded-lg border border-white/15 px-4 text-white/75"
               >
                 {copied ? <Check size={16} /> : <Copy size={16} />}
                 {copied ? "Copied" : "Copy"}
@@ -125,15 +143,12 @@ export default function HouseLink({
               </p>
               <p className="mt-1 text-sm text-white/45">
                 {hasLink
-                  ? useCount > 0
-                    ? `Opened ${useCount} time${useCount === 1 ? "" : "s"}${
-                        lastUsedAt
-                          ? `, last on ${new Date(lastUsedAt).toLocaleDateString("en-AU", {
-                              day: "numeric",
-                              month: "short",
-                            })}`
-                          : ""
-                      }.`
+                  ? lastUsedAt
+                    ? `Last opened ${new Date(lastUsedAt).toLocaleDateString("en-AU", {
+                        weekday: "long",
+                        day: "numeric",
+                        month: "short",
+                      })}.`
                     : "Not opened yet."
                   : "Create one and send it to the owners on WhatsApp."}
               </p>
@@ -152,8 +167,9 @@ export default function HouseLink({
 
         {hasLink && !url && (
           <p className="mt-4 border-t border-white/5 pt-4 text-xs leading-relaxed text-white/40">
-            Replacing the link stops the old one working immediately. Use it if a link has gone
-            somewhere it shouldn&apos;t.
+            Replacing the link stops the old one working immediately — for everyone who has it.
+            That is the only way to cut off access: stopping someone&apos;s emails does not stop
+            them opening a link they already hold.
           </p>
         )}
       </div>
@@ -189,8 +205,8 @@ export default function HouseLink({
                 onClick={() => setRevoked(r.ownerId, !r.revoked)}
                 className="flex min-h-[40px] items-center gap-2 rounded-lg border border-white/15 px-4 text-sm text-white/70 hover:border-white/35 disabled:opacity-40"
               >
-                {r.revoked ? <ShieldCheck size={14} /> : <ShieldOff size={14} />}
-                {r.revoked ? "Restore" : "Remove"}
+                {r.revoked ? <Undo2 size={14} /> : <MailX size={14} />}
+                {r.revoked ? "Resume emails" : "Stop emails"}
               </button>
             </li>
           ))}

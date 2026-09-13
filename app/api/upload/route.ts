@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { signUpload, documentKey } from "@/lib/r2";
+import { signUpload } from "@/lib/r2";
 import { randomUUID } from "crypto";
 
 /**
@@ -44,8 +44,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Images must be under 10MB." }, { status: 413 });
   }
 
-  const key = documentKey("cms", randomUUID(), filename ?? `image.${ext}`);
-  const uploadUrl = await signUpload(key, contentType!, bytes);
+  // Marketing images go to the PUBLIC bucket. The house-photo bucket is
+  // private and served only through short-lived signed URLs, so writing site
+  // imagery there would upload successfully and then render as a broken image
+  // on the public website.
+  const key = `cms/${randomUUID()}-${(filename ?? `image.${ext}`).replace(/[^a-zA-Z0-9._-]/g, "_").slice(-80)}`;
+  const uploadUrl = await signUpload(key, contentType!, bytes, "public");
 
   return NextResponse.json({
     uploadUrl,

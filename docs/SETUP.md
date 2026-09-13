@@ -52,12 +52,36 @@ this application after resolving their link.
 
 ## 4. Photo storage
 
-1. Create a Cloudflare R2 bucket named `site-diary`. **Keep it private** —
-   no public access, no r2.dev URL. Photos are served through short-lived
-   signed URLs; an unguessable URL is not an access control, and these are
-   other people's homes.
-2. Create an R2 API token with object read/write on that bucket.
-3. Set `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`.
+**Two buckets**, because they have opposite requirements.
+
+1. `site-diary` — house photos and documents. **Private.** No public access, no
+   r2.dev URL. Served only through short-lived signed URLs: an unguessable URL
+   is not an access control, and these are other people's homes.
+2. `site-diary-public` — marketing imagery uploaded through the admin. Public,
+   with a custom domain or the r2.dev URL. These belong on the public website
+   and must not sit behind signed URLs.
+3. Create an R2 API token with object read/write on both.
+4. Set `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`,
+   `R2_PUBLIC_BUCKET`, `R2_PUBLIC_BASE_URL`.
+
+### CORS — do not skip this
+
+Photos upload **directly from the browser** to R2. Without a CORS rule every
+upload fails with an opaque network error while `curl` works perfectly, which is
+a genuinely miserable afternoon. On the private bucket, Settings → CORS:
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://your-site.com", "http://localhost:3000"],
+    "AllowedMethods": ["PUT"],
+    "AllowedHeaders": ["content-type"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+Same for the public bucket, which the admin image uploader also PUTs to.
 
 ## 5. Schema and policies — one release, in this order
 
@@ -79,8 +103,11 @@ still held by the public roles. Run it in CI and after every deploy.
 Then seed:
 
 ```bash
-npm run db:seed    # admin user, site content, 31 stages, 19 message templates
+ADMIN_PASSWORD="$(openssl rand -base64 24)" npm run db:seed
 ```
+
+The seed refuses to run without `ADMIN_PASSWORD` — a known default on a login
+form with no rate limiting is the staff side already lost. Record what you set.
 
 ## 6. Scheduled jobs
 
@@ -95,7 +122,9 @@ Schedule them in Supabase `pg_cron` + `pg_net` rather than Vercel Cron, so a
 hosting change doesn't silently break the automation. Call with
 `Authorization: Bearer $CRON_SECRET`.
 
-Also run `scripts/sweep-orphan-photos.ts` nightly.
+Also run `npm run sweep:photos` nightly. It recovers uploads whose confirmation
+was lost, and deletes the R2 objects behind removed photos — nothing else in the
+application ever deletes bytes.
 
 ## 7. Backups — Phase 0, not later
 

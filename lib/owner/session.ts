@@ -23,9 +23,13 @@ import { prisma } from "@/lib/prisma";
  * module has already verified against a live, unrevoked link.
  */
 
-const LINK_COOKIE = "sd_link";
-const WHO_COOKIE = "sd_who";
+// __Host- requires Secure, path=/ and no Domain — which these already are. It
+// stops a compromised sibling subdomain writing a cookie onto the parent.
+const PROD = process.env.NODE_ENV === "production";
+const LINK_COOKIE = PROD ? "__Host-sd_link" : "sd_link";
+const WHO_COOKIE = PROD ? "__Host-sd_who" : "sd_who";
 const ONE_YEAR = 60 * 60 * 24 * 365;
+const VISIT_THROTTLE_MS = 60 * 60 * 1000;
 
 export type HouseAccess = { linkId: string; houseId: string };
 
@@ -54,7 +58,15 @@ export async function issueHouseLink(houseId: string): Promise<string> {
   return token;
 }
 
-/** Resolves a raw token to its house, and records the visit. */
+/**
+ * Resolves a raw token to its house.
+ *
+ * Read-only. This runs on every owner page render and every owner API call, so
+ * it must not write — the previous version incremented a counter on each one,
+ * which took a row lock per request on a single-connection pool and turned the
+ * "opened 47 times" figure in the admin into a count of HTTP requests. Visits
+ * are recorded separately, by `recordVisit`, and throttled.
+ */
 export async function redeemToken(token: string): Promise<HouseAccess | null> {
   if (!token || token.length < 20) return null;
 
@@ -64,15 +76,23 @@ export async function redeemToken(token: string): Promise<HouseAccess | null> {
   });
   if (!link || link.revokedAt) return null;
 
-  // Access logging is what link-only access would otherwise give up. Knowing an
-  // owner opened their page, and when, matters to him day to day and matters
-  // more if anything is ever disputed.
-  await prisma.accessLink.update({
-    where: { id: link.id },
+  return { linkId: link.id, houseId: link.houseId };
+}
+
+/**
+ * Records that someone actually opened the page.
+ *
+ * Access logging is the compensating control for link-only access — knowing an
+ * owner opened their build, and when, matters day to day and matters more if
+ * anything is ever disputed. Throttled to once an hour per link so it counts
+ * visits rather than renders.
+ */
+export async function recordVisit(linkId: string): Promise<void> {
+  const cutoff = new Date(Date.now() - VISIT_THROTTLE_MS);
+  await prisma.accessLink.updateMany({
+    where: { id: linkId, OR: [{ lastUsedAt: null }, { lastUsedAt: { lt: cutoff } }] },
     data: { lastUsedAt: new Date(), useCount: { increment: 1 } },
   });
-
-  return { linkId: link.id, houseId: link.houseId };
 }
 
 /**

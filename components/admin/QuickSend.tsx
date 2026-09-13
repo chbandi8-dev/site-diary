@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Check, Loader2, X } from "lucide-react";
+import { Camera, Check, ImagePlus, Loader2, RotateCw, X } from "lucide-react";
 import { uploadPhoto } from "@/lib/capture/photo";
 
 type Slot = { name: string; label: string; options: string[] };
@@ -17,7 +17,13 @@ type Template = {
   preview: string;
 };
 
-type Attached = { id: string; name: string; state: "uploading" | "ready" | "failed" };
+type Attached = {
+  id: string;
+  name: string;
+  state: "uploading" | "ready" | "failed";
+  /** Kept on failure so the retry is one tap rather than finding the photo again. */
+  file?: File;
+};
 
 /**
  * The on-site screen.
@@ -45,21 +51,37 @@ export default function QuickSend({ houseId }: { houseId: string }) {
     fetch(`/api/pm/quick-send?houseId=${houseId}`)
       .then((r) => r.json())
       .then((d) => setTemplates(d.templates ?? []))
-      .catch(() => setResult({ ok: false, text: "Couldn't load the messages. Pull to refresh." }));
+      .catch(() =>
+        setResult({
+          ok: false,
+          text: "Couldn't load the messages — looks like there's no signal here. Try again once you've got bars.",
+        })
+      );
   }, [houseId]);
 
   const addPhotos = useCallback(
-    async (files: FileList) => {
-      for (const file of Array.from(files)) {
-        const id = crypto.randomUUID();
-        setPhotos((p) => [...p, { id, name: file.name, state: "uploading" }]);
-        try {
-          await uploadPhoto(houseId, file, { photoId: id, origin: "in_app" });
-          setPhotos((p) => p.map((x) => (x.id === id ? { ...x, state: "ready" } : x)));
-        } catch {
-          setPhotos((p) => p.map((x) => (x.id === id ? { ...x, state: "failed" } : x)));
-        }
-      }
+    async (files: FileList, origin: "in_app" | "camera_roll" = "in_app") => {
+      // In parallel. One at a time meant a long stare at spinners on marginal
+      // 4G before he could send anything.
+      const queued = Array.from(files).map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+      }));
+      setPhotos((p) => [
+        ...p,
+        ...queued.map((q) => ({ id: q.id, name: q.file.name, state: "uploading" as const })),
+      ]);
+
+      await Promise.all(
+        queued.map(async ({ id, file }) => {
+          try {
+            await uploadPhoto(houseId, file, { photoId: id, origin });
+            setPhotos((p) => p.map((x) => (x.id === id ? { ...x, state: "ready" } : x)));
+          } catch {
+            setPhotos((p) => p.map((x) => (x.id === id ? { ...x, state: "failed", file } : x)));
+          }
+        })
+      );
     },
     [houseId]
   );
@@ -148,23 +170,49 @@ export default function QuickSend({ houseId }: { houseId: string }) {
       )}
 
       {/* Photos first: he shoots, then says what happened. */}
-      <label
-        htmlFor="quick-photos"
-        className="flex cursor-pointer items-center justify-center gap-3 rounded-lg border-2 border-dashed border-white/15 px-5 py-7 text-white/70 transition-colors hover:border-gold/50 hover:text-white"
-      >
-        <Camera size={22} aria-hidden="true" />
-        <span className="text-base font-medium">
-          {readyCount > 0 ? `${readyCount} photo${readyCount === 1 ? "" : "s"} ready` : "Add photos"}
-        </span>
-      </label>
+      {/*
+        Two buttons, not one. `capture` forces the camera and removes the
+        camera-roll option entirely on iOS — but he shoots with the native
+        camera out of habit, which is the whole reason capture reads GPS before
+        stripping it. Give him both paths.
+      */}
+      <div className="grid grid-cols-2 gap-2">
+        <label
+          htmlFor="quick-camera"
+          className="flex min-h-[76px] cursor-pointer items-center justify-center gap-2.5 rounded-lg border-2 border-dashed border-white/15 px-4 text-white/70 transition-colors hover:border-gold/50 hover:text-white"
+        >
+          <Camera size={20} aria-hidden="true" />
+          <span className="font-medium">Take a photo</span>
+        </label>
+        <label
+          htmlFor="quick-roll"
+          className="flex min-h-[76px] cursor-pointer items-center justify-center gap-2.5 rounded-lg border-2 border-dashed border-white/15 px-4 text-white/70 transition-colors hover:border-gold/50 hover:text-white"
+        >
+          <ImagePlus size={20} aria-hidden="true" />
+          <span className="font-medium">From camera roll</span>
+        </label>
+      </div>
+      {readyCount > 0 && (
+        <p className="mt-2 text-center text-sm text-gold">
+          {readyCount} photo{readyCount === 1 ? "" : "s"} ready to send
+        </p>
+      )}
       <input
-        id="quick-photos"
+        id="quick-camera"
         type="file"
         accept="image/*"
         multiple
         capture="environment"
         className="sr-only"
-        onChange={(e) => e.target.files && addPhotos(e.target.files)}
+        onChange={(e) => e.target.files && addPhotos(e.target.files, "in_app")}
+      />
+      <input
+        id="quick-roll"
+        type="file"
+        accept="image/*"
+        multiple
+        className="sr-only"
+        onChange={(e) => e.target.files && addPhotos(e.target.files, "camera_roll")}
       />
 
       {photos.length > 0 && (
@@ -178,6 +226,24 @@ export default function QuickSend({ houseId }: { houseId: string }) {
               {p.state === "ready" && <Check size={13} className="text-gold" aria-hidden="true" />}
               {p.state === "failed" && <X size={13} className="text-red-400" aria-hidden="true" />}
               <span className="max-w-[9rem] truncate">{p.name}</span>
+              {/*
+                A failed photo used to be silently dropped from the send, so he
+                would post an update believing the picture went with it.
+              */}
+              {p.state === "failed" && p.file && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const list = new DataTransfer();
+                    list.items.add(p.file!);
+                    setPhotos((all) => all.filter((x) => x.id !== p.id));
+                    void addPhotos(list.files);
+                  }}
+                  className="flex items-center gap-1 text-gold"
+                >
+                  <RotateCw size={12} aria-hidden="true" /> Retry
+                </button>
+              )}
             </li>
           ))}
         </ul>

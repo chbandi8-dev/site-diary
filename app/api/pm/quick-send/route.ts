@@ -20,7 +20,16 @@ import { z } from "zod";
  * their inbox that the house slipped to the 14th.
  */
 
-type Slot = { name: string; label: string; options: string[] };
+const slotSchema = z.array(
+  z.object({ name: z.string(), label: z.string(), options: z.array(z.string()) })
+);
+type Slot = z.infer<typeof slotSchema>[number];
+
+/** Slots come from a JSON column, so they are parsed rather than asserted. */
+function slotsOf(value: unknown): Slot[] {
+  const parsed = slotSchema.safeParse(value ?? []);
+  return parsed.success ? parsed.data : [];
+}
 
 const sendRequest = z.object({
   houseId: z.string().uuid(),
@@ -63,7 +72,7 @@ export async function GET(req: NextRequest) {
       label: t.label,
       category: t.category,
       kind: t.kind,
-      slots: (t.slots as Slot[] | null) ?? [],
+      slots: slotsOf(t.slots),
       wantsPhoto: t.wantsPhoto,
       sendsImmediately: t.autoPublish,
       preview: t.body,
@@ -91,7 +100,7 @@ export async function POST(req: NextRequest) {
 
   let body: string;
   try {
-    body = render(template.body, (template.slots as Slot[] | null) ?? [], slots);
+    body = render(template.body, slotsOf(template.slots), slots);
   } catch (cause) {
     return NextResponse.json(
       { error: cause instanceof Error ? cause.message : "Invalid choice" },
@@ -132,7 +141,10 @@ export async function POST(req: NextRequest) {
   let notified = 0;
   if (publish) {
     const recipients = await ownersOf(houseId);
-    const queued = await queue(
+    // Recipients, not newly-inserted rows. A retried send would otherwise
+    // report "Sent to 0 owners" while the original was still queued.
+    notified = recipients.length;
+    await queue(
       recipients.map((recipient) => ({
         recipient,
         // Keyed on the update, so a retry cannot send twice.
@@ -143,7 +155,6 @@ export async function POST(req: NextRequest) {
         updateId: update.id,
       }))
     );
-    notified = queued.length;
   }
 
   return NextResponse.json(

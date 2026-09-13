@@ -160,7 +160,9 @@ export async function uploadPhoto(
     body: prepared.file,
   });
   if (!put.ok) {
-    throw new Error("The photo didn't reach storage. It stays queued — try again.");
+    throw new Error(
+      "That photo didn't upload — usually signal. Tap retry when you've got bars."
+    );
   }
 
   await postJson("/api/pm/photos", "PATCH", { photoId });

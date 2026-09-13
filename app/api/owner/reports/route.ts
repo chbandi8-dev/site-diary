@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { currentHouse, currentViewer } from "@/lib/owner/session";
 import { createReport, photoBelongsToHouse } from "@/lib/db/owner";
 import { z } from "zod";
+import { overLimit, wrongOrigin } from "@/lib/owner/guard";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,10 @@ const body = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  if (wrongOrigin(req)) {
+    return NextResponse.json({ error: "Request blocked." }, { status: 403 });
+  }
+
   const access = await currentHouse();
   if (!access) {
     return NextResponse.json(
@@ -30,6 +35,9 @@ export async function POST(req: NextRequest) {
       { status: 401 }
     );
   }
+
+  const limited = await overLimit(access.houseId, "reports");
+  if (limited) return limited;
 
   const viewer = await currentViewer(access.houseId);
   if (!viewer) {

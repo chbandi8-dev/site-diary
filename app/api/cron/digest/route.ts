@@ -52,7 +52,7 @@ async function run(req: NextRequest) {
     const created = await queue(
       recipients.map((recipient) => ({
         recipient,
-        dedupeKey: `digest:${week}:${house.id}:${recipient.email}`,
+        dedupeKey: `digest:${week}:${house.id}:${recipient.ownerId}`,
         subject: `${house.address} — this week`,
         body: composeDigest(house),
         houseId: house.id,
