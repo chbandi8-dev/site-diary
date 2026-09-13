@@ -99,7 +99,8 @@ async function main() {
   const problems: string[] = [];
   const planned: { row: Row; stages: string[]; positions: number[] }[] = [];
 
-  for (const [i, row] of rows.entries()) {
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
     const line = i + 2;
     for (const field of REQUIRED) {
       if (!row[field]) problems.push(`Line ${line}: "${field}" is empty`);
@@ -108,7 +109,10 @@ async function main() {
       problems.push(`Line ${line}: "${row.owner1_email}" is not an email address`);
     }
 
-    const requested = (row.current_stage ?? "").split(";").map((s) => s.trim()).filter(Boolean);
+    const requested = (row.current_stage ?? "")
+      .split(";")
+      .map((part: string) => part.trim())
+      .filter(Boolean);
     const matched: string[] = [];
     for (const want of requested) {
       const hit = matchStage(want, names);
