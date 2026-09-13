@@ -54,6 +54,28 @@ same design language. Completed houses graduate into the public project
 portfolio, and handover is the natural moment to collect the testimonials the
 marketing site already has a model for. The two halves feed each other.
 
+### The stack
+
+| Piece | Service | Free allowance | Actual need at 25 houses |
+|---|---|---|---|
+| Database, auth | Supabase | 500 MB, 50k MAU | A few MB/year — text only |
+| Photos | Cloudflare R2 | 10 GB/mo, **zero egress** | ~750 MB/mo compressed |
+| Email | Resend (or Brevo) | 3,000/mo (300/day) | ~200–600/mo |
+| Voice to text | Web Speech API | Free, in-browser, no key | — |
+| Scheduled digest | Supabase `pg_cron` / Vercel Cron | Free | 1 weekly, 1 daily |
+| Weather | Open-Meteo / BOM | Free, no key | Daily pull |
+| Hosting | Vercel Pro, or Cloudflare Workers | $20/mo, or free | — |
+
+Infrastructure cost is **$0/month** for well over a year — see *Cost*.
+
+Supabase carries the database and owner auth for two specific reasons, not
+because it bundles the most features: **Row Level Security**, which is the only
+honest way to meet the per-house isolation requirement, and **native
+magic-link auth**, which is exactly the owner access model. Photos go to R2 and
+*not* to Supabase Storage — the free tier there is 1 GB against R2's 10 GB, and
+R2 charges nothing for egress, which is precisely the cost shape of a photo
+gallery owners revisit.
+
 ---
 
 ## 3. Capture — his side
@@ -167,21 +189,36 @@ change, not a rewrite.
 
 ### Phase 0 — Foundation (prerequisite, ~2 days)
 
-The current stack cannot hold this data:
+Four things in the current repo block everything else:
 
-- `lib/prisma.ts` points Prisma at a SQLite file bundled into the serverless
-  function via `outputFileTracingIncludes` in `next.config.mjs`. On Vercel that
-  filesystem is read-only and ephemeral — writes are lost on redeploy and are not
-  shared between function instances.
-- `app/api/upload/route.ts` writes to `public/uploads` on local disk. Same
-  problem, and site photos are the core asset.
-- `vercel.json` commits a shared `NEXTAUTH_SECRET` into the repo.
+- **Data does not persist.** `lib/prisma.ts` points Prisma at a SQLite file
+  bundled into the serverless function via `outputFileTracingIncludes` in
+  `next.config.mjs`. On Vercel that filesystem is read-only and ephemeral —
+  writes are lost on redeploy and are not shared between function instances.
+- **Photos do not persist.** `app/api/upload/route.ts` writes to
+  `public/uploads` on local disk. Same failure, and site photos are the
+  irreplaceable asset here.
+- **A secret is committed.** `vercel.json` carries a shared `NEXTAUTH_SECRET`
+  in version control.
+- **The hosting plan may not be licensed for this.** Vercel's terms restrict the
+  Hobby plan to personal, non-commercial use, defining commercial as any
+  deployment used for the financial gain of anyone involved in producing it, and
+  reserve the right to disable deployments with or without notice. A builder's
+  marketing site and client portal is commercial. If the site is on Hobby today
+  it is already exposed — independent of this project.
 
-Work: migrate to Postgres (Neon or Vercel Postgres), move uploads to Vercel Blob
-or S3/R2 with client-side image compression, move secrets to Vercel environment
-variables, migrate existing CMS rows.
+Work:
 
-Non-negotiable. Everything else assumes durable storage.
+1. Supabase project; move the schema to Postgres; migrate the existing CMS rows.
+2. R2 bucket; replace the upload route with presigned direct-to-R2 uploads;
+   compress client-side before upload.
+3. Secrets into environment variables; rotate the committed one.
+4. Settle hosting: Vercel Pro at $20/mo for no migration work, or Cloudflare
+   Workers for $0 plus roughly 2–3 days of adapter work.
+
+Non-negotiable. Everything downstream assumes durable storage.
+
+*Passes when a photo uploaded before a deploy is still there after it.*
 
 ### Phase 1 — Stop the bleeding (weeks 1–2)
 
@@ -235,10 +272,32 @@ Notification   channel, recipient, updateId, status, sentAt
 
 Two non-obvious constraints:
 
-- `visibility` must be enforced at the query layer, not the UI layer. An owner
-  must be structurally incapable of seeing another house or an internal note.
-- Every date shown to an owner needs an `isEstimate` flag and renders differently
-  when true.
+- **`visibility` must be enforced by the database, not the interface.** An owner
+  must be structurally incapable of loading another house or an internal note,
+  not merely un-shown one. This is what Supabase Row Level Security is for, and
+  it is the main reason to use Supabase at all.
+- **Every date shown to an owner needs an `isEstimate` flag** and must render
+  differently when true. Forecasts published as facts are how a helpful system
+  becomes a liability.
+
+### The trap that would silently undo the first one
+
+**Prisma bypasses RLS by default.** A raw `DATABASE_URL` connection logs in as
+the `postgres` role, which owns the tables and holds `BYPASSRLS` — so every
+policy is ignored and nothing warns you. The same is true of the Supabase
+service-role key. Since this repo is already Prisma-based, this would bite
+immediately and invisibly.
+
+Split along the risk boundary rather than fighting it:
+
+- **Owner portal** → `@supabase/ssr` with the anon key and the owner's JWT. RLS
+  enforced in Postgres. This is the side where a leak is unrecoverable.
+- **Admin / PM side** → leave the existing NextAuth + Prisma alone. One trusted
+  user, already built, no reason to touch it.
+
+If Prisma must own both sides, the alternative is a dedicated restricted
+Postgres role plus a Prisma client extension that sets session context per query.
+It works, but it is a permanent footgun versus a boundary drawn once.
 
 ---
 
@@ -260,31 +319,133 @@ Two non-obvious constraints:
 
 ---
 
-## 11. Cost, and build vs buy
+## 11. Cost
 
-Running cost at 25 houses: roughly **AUD $60–100/month** — Vercel Pro, managed
-Postgres, blob storage, SMS at a few cents each, transcription and drafting API
-usage in the low single digits.
+Infrastructure runs at **$0/month** and stays there for well over a year.
 
-Buildertrend and CoConstruct do this and more, from roughly USD $399/month, and
-would be running next week rather than in six.
+| Line | Free allowance | Consumption at 25 houses | Headroom |
+|---|---|---|---|
+| Supabase Postgres | 500 MB | a few MB/year | years |
+| Supabase auth | 50,000 MAU | ~25 | irrelevant |
+| Cloudflare R2 | 10 GB/mo, $0 egress | ~750 MB/mo | ~13 months |
+| Resend email | 3,000/mo | ~200–600/mo | 5× |
+| Web Speech API | unmetered | — | — |
 
-The honest case for building: those tools are designed for the builder's back
-office, and their client portals are an afterthought that owners rarely open.
-This product is owner-experience-first and everything else is subordinate to
-that — plus it shares a domain, a design language and a database with the
-marketing site that already exists here, and there is no per-user pricing as the
-portfolio grows.
+The R2 line is the only one that ever moves. At 1600px WebP (~200 KB a photo),
+25 houses × 5 photos a day is roughly 750 MB a month, so the 10 GB free tier
+lasts about thirteen months — and the eleventh gigabyte then costs 1.5 cents.
+Zero egress is the part that matters: owners re-scrolling their galleries is the
+dominant traffic pattern here and it bills nothing.
 
-The honest case for buying: if the goal is relief this month rather than an
-asset, buy it.
+Note that Supabase pauses free projects after seven days of inactivity. That
+never triggers for this app — it is used every working day. The reason photos go
+to R2 instead of Supabase Storage is the 1 GB storage ceiling and 5 GB bandwidth
+cap, not the pause.
+
+### What $0 actually costs you
+
+**No SMS.** There is no free SMS at any volume, anywhere. Email-only means
+relying on a channel that gets filtered and batch-read, for messages whose whole
+job is *something changed at your house*. Web push is free but iOS requires the
+owner to add the page to their home screen first — exactly the install friction
+this plan otherwise avoids. Roughly **$12/month buys SMS back**, and it is the
+highest-value dollar in the system. Budget it as the first thing added, not as
+something ruled out.
+
+**Weaker voice capture.** Web Speech API is free and decent indoors, and poor
+against wind, compressors and trade jargon. Whisper at $0.006/min is about
+**$1.50/month** at this volume; a small model cleaning up transcripts is pennies.
+Call it $3/month for voice that works on site — "nearly free" is materially
+better than "free" on this line.
+
+**No SLA, no support, nobody who owes you a restore.** This is the trade-off
+worth actually thinking about, because Phase 3 puts variation approvals and
+contract documents in here — evidence in a dispute. Free tiers change terms and
+no one is obliged to help you. Mitigation is cheap and also free: a nightly
+automated database export plus a photo sync to his own Google Drive. That turns
+"we lost the record" into "restoring takes an afternoon." **Do this from Phase 1,
+not later.**
+
+### Three honest price points
+
+| Option | Cost | Trade |
+|---|---|---|
+| Cloudflare Workers + all free tiers | **$0/mo** | Email only; 2–3 extra days of migration |
+| Same, plus SMS and Whisper | **~$15/mo** | Email only → proper notifications |
+| Vercel Pro + all free tiers + SMS | **~$35/mo** | No migration work at all |
+
+His time is the scarcest resource in this entire picture. If moving off Vercel
+delays the pilot by three days, the $20/month is the better trade — take the
+$35/mo row and revisit later.
+
+### Build vs buy
+
+Buildertrend and CoConstruct do all of this and much more, from roughly
+$600/month AUD, and would be running next week.
+
+The honest case for buying: if what is wanted is relief *this month* rather than
+an asset, buy it and don't feel clever about it.
+
+The honest case for building: those products are designed around the builder's
+back office, and their client portals are an afterthought owners largely don't
+open. This one is owner-experience-first and everything else is subordinate to
+that. It also shares a domain, a design language and a database with a marketing
+site that already exists here, and it does not charge more as the portfolio
+grows.
 
 ---
 
-## 12. Decisions needed before Phase 1
+## 12. What to build on
 
-1. Weekly + on-change cadence, or hold out for daily?
-2. SMS + email first, or is WhatsApp non-negotiable for these owners?
-3. One shared stage template for all houses, or per-house variation?
-4. Does the owner portal live under the existing brand domain?
-5. Are progress claims in scope, or does that stay in the accounting system?
+**Do not scaffold from a starter template.** This repo already has Next.js 14,
+Tailwind, Radix, a custom design system and a working admin with auth. Starting
+over from a boilerplate would throw all of that away. These are reference
+implementations to read and adapt, not foundations to build on.
+
+| Need | Source | Why this one |
+|---|---|---|
+| Supabase auth on App Router | [Vercel's `with-supabase` template](https://vercel.com/templates/next.js/supabase) | Cookie-based SSR auth via `@supabase/ssr`, which is the part that is fiddly to get right |
+| Magic-link / email OTP | [Supabase Auth docs](https://supabase.com/docs/guides/auth) | Native passwordless — this is the owner access model, don't hand-roll tokens |
+| RLS policy patterns | [Razikus/supabase-nextjs-template](https://github.com/Razikus/supabase-nextjs-template) | Apache-2.0, actively maintained, ships real RLS *and* storage policies to crib from |
+| RLS with Prisma, if needed | [prisma-extension-supabase-rls](https://github.com/dthyresson/prisma-extension-supabase-rls) | The session-context pattern, if the boundary in §9 isn't taken |
+| Presigned R2 uploads | [harshil1712/nextjs-r2-demo](https://github.com/harshil1712/nextjs-r2-demo) | From a Cloudflare advocate; covers Workers API, presigned URL and temporary credentials. **No license file — read the pattern, write your own code** |
+| Offline queue + PWA | [`@serwist/next`](https://serwist.pages.dev/) | The maintained successor to the abandoned `next-pwa`, and what the Next.js PWA docs now recommend. Gives background sync for the offline photo queue |
+| Client-side compression | [`browser-image-compression`](https://www.npmjs.com/package/browser-image-compression) | Web-worker, non-blocking; this is what keeps R2 inside the free tier and his data plan intact |
+| Friday digest emails | [React Email](https://react.email/) + [Resend](https://resend.com/docs/send-with-nextjs) | Templates as React components, previewable locally |
+| Voice capture | Web Speech API | No library. `webkitSpeechRecognition`, free, no key |
+| Weather | [Open-Meteo](https://open-meteo.com/) | Free, no API key, historical + forecast |
+
+### What is deliberately not on this list
+
+The construction-specific open source is the wrong shape.
+[OpenProject](https://github.com/opf/openproject) and
+[OpenConstructionERP](https://github.com/datadrivenconstruction/OpenConstructionERP)
+are heavyweight BOQ/BIM/ERP platforms — Gantt charts, 5D cost models, tendering.
+That is precisely the category §6 rules out, and adopting one would mean
+inheriting an enormous surface area to serve a product whose entire thesis is
+that the PM touches one screen for sixty seconds. Generic client portals like
+[Atrium](https://github.com/Vibra-Labs/Atrium) are closer in spirit but are
+agency file-sharing tools with no concept of a build stage.
+
+Nothing off the shelf models *a house moving through fourteen stages with an
+anxious family attached to it*. That model is the whole product, and it is small.
+
+---
+
+## 13. Decisions needed before Phase 1
+
+1. **Weekly + on-change cadence, or hold out for daily?** Blocks the welcome
+   message, the digest schedule, and what gets promised in writing.
+2. **$0 on Cloudflare, or $35/mo staying on Vercel?** Blocks Phase 0. Recommend
+   Vercel Pro if it saves three days — revisit once the pilot proves out.
+3. **Does the fourteen-stage spine fit every house?** He should redline it.
+   Blocks the stage model and every forecast built on it.
+4. **Is WhatsApp non-negotiable for these owners?** Blocks nothing in Phase 1 —
+   but if yes, the notification adapter gets designed differently now.
+5. **Are progress claims in scope, or do they stay in the accounting system?**
+   Blocks Phase 3 scope. Easiest to defer, most valuable to owners.
+
+Recommended start regardless of the answers: **Phase 0.** The storage problem has
+to be fixed before anything can be built on it, and the hosting-terms question
+applies to the existing site today. Then pick three easy-going owners and run
+Phase 1 on them only.
