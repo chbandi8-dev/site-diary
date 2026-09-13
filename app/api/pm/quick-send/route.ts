@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
 
   const templates = await prisma.messageTemplate.findMany({
     where: { active: true },
-    orderBy: [{ category: "asc" }, { position: "asc" }],
+    orderBy: [{ categoryPosition: "asc" }, { position: "asc" }],
   });
 
   // A template with no stages listed is always offered; one with stages is

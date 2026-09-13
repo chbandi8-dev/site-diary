@@ -39,22 +39,32 @@
 -- No grants to the public roles, on anything, ever.
 alter default privileges in schema public revoke all on tables from anon, authenticated;
 alter default privileges in schema public revoke all on sequences from anon, authenticated;
-alter default privileges in schema public revoke all on functions from anon, authenticated;
+-- EXECUTE on functions defaults to PUBLIC, not to these two roles, so revoking
+-- from the role names is a no-op. It matters the day someone adds a non-trigger
+-- SECURITY DEFINER helper, which PostgREST would otherwise expose at /rpc/.
+alter default privileges in schema public revoke all on functions from public;
 
-revoke usage on schema public from anon, authenticated;
+-- USAGE on `public` is granted to PUBLIC, of which anon and authenticated are
+-- implicit members, so revoking it from those two role names alone changes
+-- nothing. Revoke it from PUBLIC or not at all — and what actually protects the
+-- data here is the table-level revoke below, which is sufficient on its own.
+revoke usage on schema public from public, anon, authenticated;
+grant usage on schema public to postgres, service_role;
 
 -- Belt and braces: row security on every existing table as well, so a stray
 -- grant could still not return rows.
 do $$
 declare t record;
 begin
-  for t in
-    select tablename from pg_tables
-    where schemaname = 'public' and tablename <> '_prisma_migrations'
-  loop
+  for t in select tablename from pg_tables where schemaname = 'public' loop
     execute format('revoke all on public.%I from anon, authenticated', t.tablename);
     execute format('alter table public.%I enable row level security', t.tablename);
-    execute format('alter table public.%I force row level security', t.tablename);
+    -- Deliberately NOT `force`. There are no policies here by design, so FORCE
+    -- would subject the application's own role to a policy set that does not
+    -- exist — every read returning zero rows and every write failing, the
+    -- moment anyone swaps the connection to a least-privilege role, which is
+    -- exactly what a reviewer would tell you to do. Reads would fail silently:
+    -- getHouse returns null and every owner is redirected to "link not working".
   end loop;
 end $$;
 

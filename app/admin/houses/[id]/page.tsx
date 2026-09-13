@@ -1,12 +1,17 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { requireStaff } from "@/lib/auth-guard";
 import QuickSend from "@/components/admin/QuickSend";
 import HouseLink from "@/components/admin/HouseLink";
+import RecentUpdates from "@/components/admin/RecentUpdates";
+import StageBoard from "@/components/admin/StageBoard";
+import HouseStatus from "@/components/admin/HouseStatus";
 
 export const dynamic = "force-dynamic";
 
 export default async function HouseCapture({ params }: { params: { id: string } }) {
+  await requireStaff();
   const house = await prisma.house.findUnique({
     where: { id: params.id },
     select: {
@@ -14,9 +19,11 @@ export default async function HouseCapture({ params }: { params: { id: string } 
       address: true,
       suburb: true,
       waitingOn: true,
+      waitingOnEta: true,
+      handoverFrom: true,
+      handoverTo: true,
       stages: {
-        where: { status: { in: ["in_progress", "scheduled"] } },
-        select: { id: true, name: true, status: true },
+        select: { id: true, name: true, phase: true, status: true },
         orderBy: { position: "asc" },
       },
       owners: {
@@ -31,9 +38,10 @@ export default async function HouseCapture({ params }: { params: { id: string } 
         take: 1,
       },
       updates: {
-        select: { id: true, body: true, occurredAt: true, publishedAt: true, kind: true },
+        where: { deletedAt: null },
+        select: { id: true, body: true, occurredAt: true, publishedAt: true },
         orderBy: { occurredAt: "desc" },
-        take: 8,
+        take: 10,
       },
     },
   });
@@ -53,9 +61,23 @@ export default async function HouseCapture({ params }: { params: { id: string } 
             .filter((o) => !o.revokedAt)
             .map((o) => o.owner.name)
             .join(" & ") || "No owners linked"}
-          {house.stages.length > 0 && ` · ${house.stages.map((s) => s.name).join(", ")}`}
+          {house.stages.filter((s) => s.status === "in_progress").length > 0 &&
+            ` · ${house.stages
+              .filter((s) => s.status === "in_progress")
+              .map((s) => s.name)
+              .join(", ")}`}
         </p>
       </header>
+
+      <HouseStatus
+        houseId={house.id}
+        waitingOn={house.waitingOn}
+        waitingOnEta={house.waitingOnEta?.toISOString() ?? null}
+        handoverFrom={house.handoverFrom?.toISOString() ?? null}
+        handoverTo={house.handoverTo?.toISOString() ?? null}
+      />
+
+      <StageBoard stages={house.stages} />
 
       <QuickSend houseId={house.id} />
 
@@ -73,31 +95,14 @@ export default async function HouseCapture({ params }: { params: { id: string } 
         }))}
       />
 
-      <section className="mt-12">
-        <h2 className="mb-4 font-mono text-[11px] uppercase tracking-[0.13em] text-white/40">
-          Recently
-        </h2>
-        <ol className="flex flex-col">
-          {house.updates.map((u) => (
-            <li key={u.id} className="border-t border-white/5 py-3.5 first:border-t-0">
-              <div className="mb-1 flex items-baseline gap-3">
-                <time className="font-mono text-[11px] text-white/35">
-                  {u.occurredAt.toLocaleDateString("en-AU", { day: "numeric", month: "short" })}
-                </time>
-                {!u.publishedAt && (
-                  <span className="font-mono text-[10px] uppercase tracking-[0.13em] text-gold">
-                    Draft — not sent
-                  </span>
-                )}
-              </div>
-              <p className="text-sm leading-relaxed text-white/75">{u.body}</p>
-            </li>
-          ))}
-          {house.updates.length === 0 && (
-            <li className="py-3 text-sm text-white/40">Nothing logged yet.</li>
-          )}
-        </ol>
-      </section>
+      <RecentUpdates
+        updates={house.updates.map((u) => ({
+          id: u.id,
+          body: u.body,
+          occurredAt: u.occurredAt.toISOString(),
+          published: Boolean(u.publishedAt),
+        }))}
+      />
     </div>
   );
 }

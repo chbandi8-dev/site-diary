@@ -12,7 +12,17 @@ async function main() {
   await seedTemplates(prisma);
 
   // Admin user
-  const hashedPassword = await bcrypt.hash("Admin@123", 12);
+  // Never a published default. The admin login has no rate limiting and no
+  // lockout, so a known password in a public repository is the staff side
+  // already owned.
+  const adminPassword =
+    process.env.ADMIN_PASSWORD ??
+    (() => {
+      throw new Error(
+        "Set ADMIN_PASSWORD before seeding. Generate one with: openssl rand -base64 24"
+      );
+    })();
+  const hashedPassword = await bcrypt.hash(adminPassword, 12);
   await prisma.user.upsert({
     where: { email: "admin@site.com" },
     update: {},

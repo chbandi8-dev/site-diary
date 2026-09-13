@@ -92,10 +92,17 @@ export async function getTimeline(houseId: string, limit = 40) {
   );
 }
 
-/** What this house's people have raised, and his replies. */
-export async function getReports(houseId: string) {
+/**
+ * What this person has raised, and his replies.
+ *
+ * Scoped to the individual, not the house. A link ends up in a group chat with
+ * in-laws, a broker, sometimes a previous owner — and these threads contain
+ * whatever the owner chose to write plus the builder's answer, which may touch
+ * cost or blame. The house is shared; the correspondence is not.
+ */
+export async function getReports(houseId: string, ownerId: string) {
   return prisma.ownerReport.findMany({
-    where: { houseId },
+    where: { houseId, ownerId },
     select: {
       id: true,
       kind: true,
@@ -170,4 +177,24 @@ export async function createOwnerPhoto(
     },
     select: { id: true },
   });
+}
+
+/**
+ * The builder's own name and number.
+ *
+ * Withholding these doesn't stop the phone call, it just makes the page feel
+ * like a wall between an owner and their builder. And a forwarded link should
+ * open on something that says whose page it is.
+ */
+export async function getBuilder() {
+  const rows = await prisma.siteContent.findMany({
+    where: { key: { in: ["company_name", "contact_phone", "contact_email"] } },
+    select: { key: true, value: true },
+  });
+  const map = new Map(rows.map((r) => [r.key, r.value]));
+  return {
+    name: map.get("company_name") ?? null,
+    phone: map.get("contact_phone") ?? null,
+    email: map.get("contact_email") ?? null,
+  };
 }

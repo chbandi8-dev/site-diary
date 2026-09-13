@@ -195,7 +195,13 @@ export default function ReportPanel({
       </form>
       )}
 
-      {reports.length > 0 && (
+      {/*
+        Only shown to someone who has registered. A link gets forwarded — to
+        parents, a broker, a neighbour — and the history contains the owners'
+        questions by name alongside his answers, including anything he replied
+        "nothing wrong" to.
+      */}
+      {viewer && reports.length > 0 && (
         <div className="mt-12">
           <h3 className="mb-5 font-display text-xl tracking-tight">What you&apos;ve raised</h3>
           <ol className="flex flex-col">

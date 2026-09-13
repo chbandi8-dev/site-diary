@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { requireStaff } from "@/lib/auth-guard";
 import { AlertCircle, Clock } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,7 @@ const DAYS_QUIET_BEFORE_FLAG = 5;
  * going quiet is the leading indicator of an owner about to ring.
  */
 export default async function HousesPage() {
+  await requireStaff();
   const houses = await prisma.house.findMany({
     where: { status: { not: "handed_over" } },
     select: {

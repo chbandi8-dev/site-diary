@@ -32,14 +32,22 @@ function monthOf(d: Date): string {
   return d.toLocaleDateString("en-AU", { month: "long", year: "numeric" });
 }
 
-export default function Timeline({ updates }: { updates: Update[] }) {
+export default function Timeline({
+  updates,
+  registered = false,
+}: {
+  updates: Update[];
+  registered?: boolean;
+}) {
   if (updates.length === 0) {
     return (
       <section className="border-t border-text/10 pt-10">
         <h2 className="mb-3 font-display text-2xl tracking-tight">Nothing posted yet</h2>
         <p className="max-w-prose leading-relaxed text-text/65">
-          Updates will appear here as work starts. You&apos;ll get an email each time, so there&apos;s
-          no need to keep checking back.
+          Updates will appear here as work starts.{" "}
+          {registered
+            ? "You'll get an email each time, so there's no need to keep checking back."
+            : "Add your email above and we'll tell you when there's news."}
         </p>
       </section>
     );

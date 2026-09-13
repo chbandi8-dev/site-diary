@@ -124,28 +124,49 @@ export async function currentViewer(
  * Registers whoever is holding the link for updates on this house.
  *
  * Deliberately not a sign-up: no password, nothing to confirm, and they have
- * already seen their house by this point. Matching on email means a returning
- * person on a new device rejoins their existing record rather than becoming a
- * duplicate.
+ * already seen their house by this point.
+ *
+ * Identity is resolved WITHIN this house and never across the database. The
+ * email is unverified by design — the link is access, the email is only
+ * delivery — so matching a global `owners` row on it would let anyone holding
+ * any link type a stranger's address and thereby rename them, and subscribe
+ * them to a different family's build updates from the builder's own domain.
+ *
+ * A returning person on a new device rejoins their existing record for THIS
+ * house. Someone whose access was revoked stays revoked: re-registering must
+ * not be a way to undo the only removal control there is.
  */
 export async function registerViewer(
   houseId: string,
   name: string,
   email: string
-): Promise<{ id: string }> {
+): Promise<{ id: string } | { error: "revoked" }> {
   const normalised = email.trim().toLowerCase();
 
-  const owner = await prisma.owner.upsert({
-    where: { email: normalised },
-    update: { name: name.trim(), registeredAt: new Date() },
-    create: { name: name.trim(), email: normalised, registeredAt: new Date() },
+  const existing = await prisma.houseOwner.findFirst({
+    where: { houseId, owner: { email: normalised } },
+    select: { revokedAt: true, ownerId: true },
   });
 
-  await prisma.houseOwner.upsert({
-    where: { houseId_ownerId: { houseId, ownerId: owner.id } },
-    update: { revokedAt: null },
-    create: { houseId, ownerId: owner.id },
-  });
+  if (existing?.revokedAt) return { error: "revoked" };
+
+  let ownerId = existing?.ownerId;
+
+  if (ownerId) {
+    await prisma.owner.update({
+      where: { id: ownerId },
+      data: { name: name.trim(), registeredAt: new Date() },
+    });
+  } else {
+    const created = await prisma.owner.create({
+      data: { name: name.trim(), email: normalised, registeredAt: new Date() },
+      select: { id: true },
+    });
+    ownerId = created.id;
+    await prisma.houseOwner.create({ data: { houseId, ownerId } });
+  }
+
+  const owner = { id: ownerId };
 
   cookies().set(WHO_COOKIE, owner.id, {
     httpOnly: true,

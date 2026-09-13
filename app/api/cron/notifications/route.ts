@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
  * deduped and only leaves `queued` once the provider has accepted it. Authorised
  * by a shared secret rather than a session, since no human calls it.
  */
-export async function POST(req: NextRequest) {
+async function run(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -19,3 +19,11 @@ export async function POST(req: NextRequest) {
   const { sent, failed } = await flush();
   return NextResponse.json({ sent, failed });
 }
+
+/**
+ * Both verbs. Vercel Cron issues GET; Supabase pg_net is usually POST. Exposing
+ * only one of them fails silently forever — the queue simply never drains and
+ * nothing anywhere says so.
+ */
+export const GET = run;
+export const POST = run;

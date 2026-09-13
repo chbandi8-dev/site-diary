@@ -36,11 +36,17 @@ export default function HouseHeader({
   stages,
   active,
   next,
+  lastUpdate,
+  builder,
+  latestPhoto,
 }: {
   house: House;
   stages: OwnerStage[];
   active: OwnerStage[];
   next?: OwnerStage;
+  lastUpdate?: Date | null;
+  builder?: { name: string | null; phone: string | null; email: string | null };
+  latestPhoto?: { url: string; caption: string | null } | null;
 }) {
   const reduced = useReducedMotion();
   const handover = formatRange(house.handoverFrom, house.handoverTo);
@@ -70,6 +76,35 @@ export default function HouseHeader({
       >
         {house.address}
       </motion.h1>
+
+      {/*
+        "Underway: Frame" with no date looks equally live whether it is from
+        Tuesday or from April. This one line is the cheapest thing on the page.
+      */}
+      {lastUpdate && (
+        <motion.p {...rise(0.09)} className="mt-2 text-sm text-text/55">
+          Last update{" "}
+          {lastUpdate.toLocaleDateString("en-AU", {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+          })}
+        </motion.p>
+      )}
+
+      {latestPhoto && (
+        <motion.figure {...rise(0.12)} className="mt-7">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={latestPhoto.url}
+            alt={latestPhoto.caption ?? `The most recent photo of ${house.address}`}
+            className="aspect-[3/2] w-full bg-surface object-cover"
+          />
+          {latestPhoto.caption && (
+            <figcaption className="mt-2 text-sm text-text/55">{latestPhoto.caption}</figcaption>
+          )}
+        </motion.figure>
+      )}
 
       {/*
         The question that generates most of his incoming calls, answered before
@@ -126,6 +161,16 @@ export default function HouseHeader({
       </motion.dl>
 
       <PhaseRail phases={toPhases(stages)} />
+
+      {builder?.phone && (
+        <motion.p {...rise(0.24)} className="mt-8 text-sm leading-relaxed text-text/60">
+          Anything urgent, just ring {builder.name ?? "your builder"} on{" "}
+          <a href={`tel:${builder.phone.replace(/\s/g, "")}`} className="underline underline-offset-4">
+            {builder.phone}
+          </a>
+          . Otherwise there&apos;s a spot at the bottom of this page to ask a question.
+        </motion.p>
+      )}
     </header>
   );
 }

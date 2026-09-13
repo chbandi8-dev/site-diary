@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { issueHouseLink } from "@/lib/owner/session";
+import { siteUrl } from "@/lib/site-url";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -44,9 +45,7 @@ export async function POST(req: NextRequest) {
   if (!house) return NextResponse.json({ error: "House not found" }, { status: 404 });
 
   const token = await issueHouseLink(house.id);
-  const base = process.env.NEXTAUTH_URL ?? "";
-
-  return NextResponse.json({ url: `${base}/h/${token}` }, { status: 201 });
+  return NextResponse.json({ url: `${siteUrl()}/h/${token}` }, { status: 201 });
 }
 
 export async function PUT(req: NextRequest) {

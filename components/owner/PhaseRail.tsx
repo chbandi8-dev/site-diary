@@ -32,12 +32,12 @@ export default function PhaseRail({
               (phase.state === "done"
                 ? "bg-accent-primary"
                 : phase.state === "active"
-                  ? "bg-accent-primary"
+                  ? "bg-accent-primary/45"
                   : "bg-text/12")
             }
-            style={{ width: reduced ? undefined : undefined }}
             initial={reduced ? false : { scaleX: 0 }}
             animate={{ scaleX: 1 }}
+            style={{ transformOrigin: "left" }}
             transition={{ duration: 0.5, delay: 0.1 + i * 0.06, ease: [0.22, 0.61, 0.36, 1] }}
           />
           <span
@@ -80,10 +80,23 @@ export function toPhases(
     byPhase.get(phase)!.push(stage);
   }
 
+  // Position of the work actually happening. Everything ordered before it is
+  // behind them, whether or not every administrative stage was ever ticked off
+  // — nobody back-fills "Selections & colours", and a rail showing "Before we
+  // start" as un-started while the frame goes up is exactly the argument this
+  // was meant to avoid.
+  const frontier = Math.max(
+    ...stages
+      .filter((s) => s.status === "in_progress" || s.status === "complete")
+      .map((s) => s.position),
+    -1
+  );
+
   return order.map((name) => {
     const group = byPhase.get(name)!;
     if (group.some((s) => s.status === "in_progress")) return { name, state: "active" as const };
     if (group.every((s) => s.status === "complete")) return { name, state: "done" as const };
+    if (Math.max(...group.map((s) => s.position)) < frontier) return { name, state: "done" as const };
     return { name, state: "ahead" as const };
   });
 }

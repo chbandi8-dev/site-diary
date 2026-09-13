@@ -18,5 +18,11 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/((?!login).*)"],
+  matcher: [
+    // "/admin" itself, NOT just "/admin/*". The previous pattern required the
+    // trailing slash, so the dashboard — which renders customer names, emails
+    // and message bodies — was served to anyone who asked.
+    "/admin",
+    "/admin/((?!login).*)",
+  ],
 };

@@ -455,6 +455,7 @@ model HouseStage {
   estimates   StageEstimate[]
   inspections Inspection[]
 
+  @@unique([houseId, templateId])
   @@index([houseId, position])
   @@map("house_stages")
 }
@@ -763,15 +764,19 @@ model NotificationLog {
 /// never a free-text keyboard, because a keyboard on a site in the sun with
 /// dusty hands is the thing being designed out.
 model MessageTemplate {
-  id       String     @id @default(uuid()) @db.Uuid
-  key      String     @unique
+  id               String     @id @default(uuid()) @db.Uuid
+  key              String     @unique
   /// What he reads on the button. Short enough to scan one-handed.
-  label    String
+  label            String
   /// What the owner reads. Written in their language, not site language.
-  body     String
-  kind     UpdateKind @default(progress)
-  /// Groups the buttons on screen: "Today", "Progress", "Held up", "Milestones".
-  category String
+  body             String
+  kind             UpdateKind @default(progress)
+  /// Groups the buttons on screen.
+  category         String
+  /// Order of the groups. Explicit because alphabetical puts "Held up" first
+  /// and "Today" last — so he would scroll past four delay buttons to say
+  /// "good day today", which is most of his taps, every day, 25 times.
+  categoryPosition Int        @default(99) @map("category_position")
 
   /// Slot definitions, e.g. [{"name":"trade","options":["bricklayer","plumber"]}].
   /// Null means the template sends as written.

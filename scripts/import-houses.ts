@@ -28,6 +28,11 @@ type Row = Record<string, string>;
 const REQUIRED = ["address", "current_stage"];
 
 function parseCsv(text: string): Row[] {
+  // Excel's "CSV UTF-8" export writes a byte-order mark. Without stripping it
+  // the first header becomes "\uFEFFaddress", every row reports a missing
+  // address, and the very first real import fails for no visible reason.
+  text = text.replace(/^\uFEFF/, "");
+
   const rows: string[][] = [];
   let field = "";
   let record: string[] = [];
@@ -81,10 +86,34 @@ function matchStage(input: string, names: string[]): string | null {
   return scored[0]?.n ?? null;
 }
 
-function parseDate(value: string): Date | null {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
+/**
+ * Dates, unambiguously.
+ *
+ * `new Date("3/12/2026")` parses as 3 December in a US locale and 12 March in
+ * an Australian spreadsheet. Silently wrong by nine months, on a handover date
+ * shown to a client. So: ISO only, or explicit Australian day-first — and
+ * anything else is rejected loudly rather than guessed.
+ */
+function parseDate(value: string): Date | null | "invalid" {
+  const v = value.trim();
+  if (!v) return null;
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  if (iso) return new Date(Date.UTC(+iso[1], +iso[2] - 1, +iso[3]));
+
+  const au = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/.exec(v);
+  if (au) {
+    const [, d, m, y] = au;
+    if (+m > 12) return "invalid";
+    return new Date(Date.UTC(+y, +m - 1, +d));
+  }
+
+  return "invalid";
+}
+
+function dateOrNull(value: string): Date | null {
+  const parsed = parseDate(value);
+  return parsed === "invalid" ? null : parsed;
 }
 
 async function main() {
@@ -120,6 +149,15 @@ async function main() {
       }
     }
 
+
+    for (const field of ["waiting_on_date", "handover_from", "handover_to", "started"]) {
+      if (parseDate(row[field] ?? "") === "invalid") {
+        problems.push(
+          `Line ${line}: "${row[field]}" in ${field} isn't a date I can read. ` +
+            `Use 2027-03-01, or 1/3/2027 for the 1st of March.`
+        );
+      }
+    }
 
     const requested = (row.current_stage ?? "")
       .split(";")
@@ -171,10 +209,10 @@ async function main() {
         suburb: row.suburb || null,
         storeys: Number(row.storeys) === 2 ? 2 : 1,
         waitingOn: row.waiting_on || null,
-        waitingOnEta: parseDate(row.waiting_on_date),
-        handoverFrom: parseDate(row.handover_from),
-        handoverTo: parseDate(row.handover_to),
-        startDate: parseDate(row.started),
+        waitingOnEta: dateOrNull(row.waiting_on_date),
+        handoverFrom: dateOrNull(row.handover_from),
+        handoverTo: dateOrNull(row.handover_to),
+        startDate: dateOrNull(row.started),
       },
       create: {
         address: row.address,
@@ -182,10 +220,10 @@ async function main() {
         storeys: Number(row.storeys) === 2 ? 2 : 1,
         status: "active",
         waitingOn: row.waiting_on || null,
-        waitingOnEta: parseDate(row.waiting_on_date),
-        handoverFrom: parseDate(row.handover_from),
-        handoverTo: parseDate(row.handover_to),
-        startDate: parseDate(row.started),
+        waitingOnEta: dateOrNull(row.waiting_on_date),
+        handoverFrom: dateOrNull(row.handover_from),
+        handoverTo: dateOrNull(row.handover_to),
+        startDate: dateOrNull(row.started),
       },
     });
 
@@ -206,26 +244,39 @@ async function main() {
       });
     }
 
-    await prisma.houseStage.deleteMany({ where: { houseId: house.id } });
-    await prisma.houseStage.createMany({
-      data: templates.map((t) => {
-        const status: StageStatus = stages.includes(t.name)
-          ? "in_progress"
-          : t.position < furthest
-            ? "complete"
+    // Updated in place, never deleted and recreated.
+    //
+    // Deleting cascades away stage_estimates — the table that makes "lock-up
+    // moved from 12 March to 26 March because of six wet days" possible — and
+    // nulls the stage on every update and photo already filed against it. One
+    // re-run to fix a typo in a suburb would silently erase the build's actual
+    // history, on a script whose own header promises re-running is safe.
+    for (const t of templates) {
+      const status: StageStatus = stages.includes(t.name)
+        ? "in_progress"
+        : t.position < furthest
+          ? "complete"
+          : t.conditional
+            ? "not_applicable"
             : "not_started";
-        return {
-          houseId: house.id,
-          templateId: t.id,
-          name: t.name,
-          phase: t.phase,
-          position: t.position,
-          isPaymentMilestone: t.isPaymentMilestone,
-          plannedDays: t.typicalDays,
-          status,
-        };
-      }),
-    });
+
+      const shape = {
+        name: t.name,
+        phase: t.phase,
+        position: t.position,
+        isPaymentMilestone: t.isPaymentMilestone,
+        plannedDays: t.typicalDays,
+      };
+
+      await prisma.houseStage.upsert({
+        where: { houseId_templateId: { houseId: house.id, templateId: t.id } },
+        // Status is only set on creation. Once he has been moving stages in the
+        // app, the spreadsheet is the stale copy — re-importing must not walk
+        // his work backwards.
+        update: shape,
+        create: { houseId: house.id, templateId: t.id, status, ...shape },
+      });
+    }
 
     console.log(`  ✓ ${row.address}`);
   }

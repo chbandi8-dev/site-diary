@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  *
  * Deduped on the ISO week, so re-running it on the same Friday sends nothing.
  */
-export async function POST(req: NextRequest) {
+async function run(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -119,3 +119,11 @@ function isoWeek(d: Date): string {
   const week = Math.ceil(((date.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
   return `${date.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
+
+/**
+ * Both verbs. Vercel Cron issues GET; Supabase pg_net is usually POST. Exposing
+ * only one of them fails silently forever — the queue simply never drains and
+ * nothing anywhere says so.
+ */
+export const GET = run;
+export const POST = run;

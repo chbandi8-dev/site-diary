@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requireStaff } from "@/lib/auth-guard";
 import Link from "next/link";
 import ReportItem from "@/components/admin/ReportItem";
 
@@ -17,6 +18,7 @@ const KIND_LABEL: Record<string, string> = {
  * and a newest-first list buries exactly those.
  */
 export default async function ReportsPage() {
+  await requireStaff();
   const reports = await prisma.ownerReport.findMany({
     where: { status: { in: ["submitted", "acknowledged", "in_progress"] } },
     select: {

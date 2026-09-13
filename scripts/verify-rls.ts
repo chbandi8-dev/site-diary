@@ -110,12 +110,33 @@ async function checkSecurityInvokerViews() {
   if (rows.length === 0) pass("no views, or all are security_invoker");
 }
 
+async function checkConnectionBypassesRls() {
+  console.log("\n5. The application's own role can actually read");
+  // Row security is enabled everywhere with no policies, so the app only works
+  // because its role holds BYPASSRLS. That assumption is load-bearing and
+  // invisible — assert it rather than inherit it.
+  const rows = await prisma.$queryRaw<{ rolbypassrls: boolean }[]>`
+    select rolbypassrls from pg_roles where rolname = current_user
+  `;
+  if (rows[0]?.rolbypassrls) {
+    pass("connection role holds BYPASSRLS, as this design requires");
+  } else {
+    fail(
+      "The connection role does NOT hold BYPASSRLS. With row security enabled " +
+        "and no policies, every query returns zero rows and every owner sees " +
+        '"this link isn\'t working". Use the role documented in .env.example.'
+    );
+  }
+}
+
 async function checkAnonReadsNothing() {
-  console.log("\n5. The anon key — which ships in the browser — reads nothing");
+  console.log("\n6. An anonymous PostgREST client reads nothing");
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) {
-    console.log("  skip  NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY not set");
+    // Not a skip worth hiding: owners never use PostgREST in this design, so
+    // these are usually unset. Say why, so nobody reads a blank as a pass.
+    console.log("  n/a   no anon key configured — nothing serves PostgREST in this app");
     return;
   }
 
@@ -143,6 +164,7 @@ async function main() {
     await checkNoPolicies();
     await checkNoPublicSchemaAccess();
     await checkSecurityInvokerViews();
+    await checkConnectionBypassesRls();
     await checkAnonReadsNothing();
   } finally {
     await prisma.$disconnect();

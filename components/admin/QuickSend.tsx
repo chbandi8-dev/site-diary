@@ -39,6 +39,7 @@ export default function QuickSend({ houseId }: { houseId: string }) {
   const [choices, setChoices] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [undo, setUndo] = useState<{ id: string; until: number } | null>(null);
 
   useEffect(() => {
     fetch(`/api/pm/quick-send?houseId=${houseId}`)
@@ -65,12 +66,20 @@ export default function QuickSend({ houseId }: { houseId: string }) {
 
   function start(t: Template) {
     setResult(null);
-    if (t.slots.length === 0) {
-      void send(t, {});
-      return;
-    }
     setChoices({});
+    // Always open the sheet, even with nothing to fill in. He is sending prose
+    // in his own voice to a client; he should see it first. Eight of these
+    // otherwise sent irreversibly on one touch of a 64px button in a grid where
+    // every button looks the same.
     setOpen(t);
+  }
+
+  /** The body as the owner will read it, with choices substituted live. */
+  function preview(t: Template, chosen: Record<string, string>): string {
+    return t.slots.reduce(
+      (text, slot) => text.split(`{${slot.name}}`).join(chosen[slot.name] ?? `\u2026`),
+      t.preview
+    );
   }
 
   async function send(t: Template, slots: Record<string, string>) {
@@ -90,6 +99,10 @@ export default function QuickSend({ houseId }: { houseId: string }) {
       if (!res.ok) throw new Error(data.error ?? "That didn't send.");
 
       setResult({ ok: true, text: data.message });
+      // Mis-taps on site are not rare, and there is no taking an email back
+      // once the send job has run. The window is short but it covers the
+      // "wrong house" moment, which is the one that actually happens.
+      if (data.published) setUndo({ id: data.id, until: Date.now() + 12_000 });
       setPhotos([]);
       setOpen(null);
       router.refresh();
@@ -98,6 +111,14 @@ export default function QuickSend({ houseId }: { houseId: string }) {
     } finally {
       setSending(false);
     }
+  }
+
+  async function undoSend() {
+    if (!undo) return;
+    await fetch(`/api/pm/updates/${undo.id}`, { method: "DELETE" });
+    setUndo(null);
+    setResult({ ok: true, text: "Pulled back. Nothing was sent." });
+    router.refresh();
   }
 
   const categories = Array.from(new Set(templates.map((t) => t.category)));
@@ -109,11 +130,20 @@ export default function QuickSend({ houseId }: { houseId: string }) {
         <div
           role="status"
           className={
-            "mb-5 rounded-lg px-4 py-3 text-sm leading-relaxed " +
+            "mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg px-4 py-3 text-sm leading-relaxed " +
             (result.ok ? "bg-gold/15 text-gold" : "bg-red-500/15 text-red-300")
           }
         >
-          {result.text}
+          <span>{result.text}</span>
+          {undo && Date.now() < undo.until && (
+            <button
+              type="button"
+              onClick={undoSend}
+              className="min-h-[36px] rounded-lg border border-gold/50 px-3 font-medium"
+            >
+              Undo
+            </button>
+          )}
         </div>
       )}
 
@@ -197,6 +227,13 @@ export default function QuickSend({ houseId }: { houseId: string }) {
               >
                 <X size={20} />
               </button>
+            </div>
+
+            <div className="mb-5 rounded-lg bg-dark px-4 py-3.5">
+              <p className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.13em] text-white/35">
+                What they&apos;ll read
+              </p>
+              <p className="text-sm leading-relaxed text-white/85">{preview(open, choices)}</p>
             </div>
 
             {open.slots.map((slot) => (

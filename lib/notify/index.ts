@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { NotifyAudience, NotifyChannel } from "@prisma/client";
 import { sendEmail } from "./email";
+import { siteUrl } from "@/lib/site-url";
 
 /**
  * Notifications, in both directions.
@@ -143,7 +144,7 @@ type PendingRow = {
  * everywhere, never lands in a promotions tab, and reads fine on a phone.
  */
 function compose(row: PendingRow): string {
-  const link = `${process.env.NEXTAUTH_URL ?? ""}/my`;
+  const link = `${siteUrl()}/my`;
 
   // Anything composed at queue time carries its own text.
   if (row.body) return `${row.body}\n\nSee the photos and full history: ${link}`;

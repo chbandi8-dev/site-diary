@@ -11,17 +11,19 @@ export const dynamic = "force-dynamic";
  * After redeeming it we redirect to a clean URL, so the token stops showing in
  * the address bar, in screenshots, and in anything shown over a shoulder.
  */
-export async function GET(_req: NextRequest, { params }: { params: { token: string } }) {
+export async function GET(req: NextRequest, { params }: { params: { token: string } }) {
   const access = await redeemToken(params.token);
-  const base = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
 
+  // Relative to the incoming request, never to an env var. A wrong or missing
+  // NEXTAUTH_URL would otherwise send every owner tapping their WhatsApp link
+  // to localhost.
   if (!access) {
-    return NextResponse.redirect(new URL("/my/no-access", base));
+    return NextResponse.redirect(new URL("/my/no-access", req.url));
   }
 
   rememberLink(params.token);
 
-  const response = NextResponse.redirect(new URL("/my", base));
+  const response = NextResponse.redirect(new URL("/my", req.url));
   // Stops the token leaking to a third party through an outbound click.
   response.headers.set("Referrer-Policy", "no-referrer");
   return response;

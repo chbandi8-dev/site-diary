@@ -1,11 +1,13 @@
 export const dynamic = "force-dynamic";
 
 import { prisma } from "@/lib/prisma";
+import { requireStaff } from "@/lib/auth-guard";
 import Link from "next/link";
 import { FolderOpen, Wrench, MessageSquare, Star, Plus, ArrowRight, TrendingUp } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
 export default async function AdminDashboard() {
+  await requireStaff();
   const [projectCount, serviceCount, unreadMessages, testimonialCount, recentMessages] = await Promise.all([
     prisma.project.count(),
     prisma.service.count(),

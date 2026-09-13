@@ -38,8 +38,18 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const viewer = await registerViewer(access.houseId, parsed.data.name, parsed.data.email);
-    return NextResponse.json({ ok: true, id: viewer.id }, { status: 201 });
+    const result = await registerViewer(access.houseId, parsed.data.name, parsed.data.email);
+
+    if ("error" in result) {
+      return NextResponse.json(
+        { error: "That address has been removed from this build. Please speak to your builder." },
+        { status: 403 }
+      );
+    }
+
+    // The owner id is not returned: it is the value of the identity cookie, and
+    // handing it back to the page serves nothing.
+    return NextResponse.json({ ok: true }, { status: 201 });
   } catch {
     return NextResponse.json({ error: "That didn't save. Try again." }, { status: 500 });
   }

@@ -404,6 +404,7 @@ CREATE TABLE "message_templates" (
     "body" TEXT NOT NULL,
     "kind" "UpdateKind" NOT NULL DEFAULT 'progress',
     "category" TEXT NOT NULL,
+    "category_position" INTEGER NOT NULL DEFAULT 99,
     "slots" JSONB,
     "stage_slugs" TEXT[],
     "auto_publish" BOOLEAN NOT NULL DEFAULT true,
@@ -552,6 +553,9 @@ CREATE UNIQUE INDEX "stage_templates_position_key" ON "stage_templates"("positio
 
 -- CreateIndex
 CREATE INDEX "house_stages_house_id_position_idx" ON "house_stages"("house_id", "position");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "house_stages_house_id_template_id_key" ON "house_stages"("house_id", "template_id");
 
 -- CreateIndex
 CREATE INDEX "stage_estimates_house_stage_id_computed_at_idx" ON "stage_estimates"("house_stage_id", "computed_at");

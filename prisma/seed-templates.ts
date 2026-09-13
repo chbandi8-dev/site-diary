@@ -34,14 +34,14 @@ const NEXT_DAY = [
 
 const T: {
   key: string; label: string; body: string; category: string;
-  kind?: "progress" | "delay" | "milestone" | "weather" | "message";
+  kind?: "progress" | "delay" | "milestone" | "weather" | "message" | "decision";
   slots?: Slot[]; stages?: string[]; autoPublish?: boolean; wantsPhoto?: boolean;
 }[] = [
   // ---- Today: the three that cover most days ---------------------------
   {
     key: "on-site-today",
     label: "On site today",
-    body: "The {trade} was on site today and work is moving along as planned.",
+    body: "The {trade} was on site today — good day's work.",
     category: "Today",
     slots: [{ name: "trade", label: "Who was on", options: TRADES }],
     wantsPhoto: true,
@@ -49,7 +49,7 @@ const T: {
   {
     key: "quiet-day",
     label: "Quiet day — nothing to see",
-    body: "No work on site today. Next up is {next}, and your dates haven't changed.",
+    body: "No work on site today — that's normal at this point in a build. Next up is {next}.",
     category: "Today",
     slots: [
       {
@@ -67,9 +67,8 @@ const T: {
     key: "rained-out",
     label: "Rained out",
     body:
-      "Too wet to work on site today, so the crew stood down. This is normal for " +
-      "this time of year and it's already accounted for in your dates. I'll let " +
-      "you know if that changes.",
+      "Too wet to work on site today, so the crew stood down. A few wet days are " +
+      "part of every build — I'll let you know if it starts to affect the program.",
     category: "Today",
     kind: "weather",
   },
@@ -86,7 +85,7 @@ const T: {
   {
     key: "delivery-arrived",
     label: "Delivery arrived",
-    body: "Your {item} arrived on site today and has been checked over.",
+    body: "Your {item} arrived on site today.",
     category: "Progress",
     slots: [
       {
@@ -160,8 +159,8 @@ const T: {
     key: "waiting-on-trade",
     label: "Held up — trade",
     body:
-      "The {trade} hasn't been able to get to us this week and is now booked for " +
-      "{when}. I'm on it.",
+      "We've had to move the {trade}'s start to {when}. I'm keeping across it, and " +
+      "I'll tell you straight away if it affects your handover.",
     category: "Held up",
     kind: "delay",
     autoPublish: false,
@@ -198,7 +197,7 @@ const T: {
       "by {when} it won't hold anything up — after that it starts to push the " +
       "following stage back.",
     category: "Held up",
-    kind: "message",
+    kind: "decision",
     slots: [
       {
         name: "item",
@@ -241,7 +240,7 @@ const T: {
   {
     key: "roof-on",
     label: "Roof on",
-    body: "The roof is on and your house is watertight. Everything inside can now get underway.",
+    body: "The roof is on. Your house is under cover now, and everything inside can get underway.",
     category: "Milestones",
     kind: "milestone",
     stages: ["roof"],
@@ -274,9 +273,10 @@ const T: {
     key: "practical-completion",
     label: "Practical completion",
     body:
-      "Your house has reached practical completion. Next is our walk-through " +
-      "together, where we go room by room and list anything that needs attention " +
-      "before handover. Take your time on it — that's what it's for.",
+      "We're at the point where I'd like to walk through the house with you, room " +
+      "by room, and list anything that needs attention. Once that's done and the " +
+      "occupation certificate is through, we're at handover. Take your time on the " +
+      "walk-through — that's what it's for.",
     category: "Milestones",
     kind: "milestone",
     wantsPhoto: true,
@@ -308,6 +308,21 @@ const T: {
   },
 ];
 
+/**
+ * The order he reads the groups in, which is the order he needs them.
+ * Alphabetically this would be Held up, Milestones, Notes, Progress, Today —
+ * putting four delay buttons under his thumb and burying the three that cover
+ * most days below a dozen others.
+ */
+const CATEGORY_ORDER = ["Today", "Progress", "Milestones", "Held up", "Notes"];
+
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 export async function seedTemplates(prisma: PrismaClient) {
   for (let i = 0; i < T.length; i++) {
     const t = T[i];
@@ -316,6 +331,7 @@ export async function seedTemplates(prisma: PrismaClient) {
       body: t.body,
       kind: t.kind ?? ("progress" as const),
       category: t.category,
+      categoryPosition: CATEGORY_ORDER.indexOf(t.category) + 1,
       slots: t.slots ? (t.slots as unknown as object) : undefined,
       stageSlugs: t.stages ?? [],
       autoPublish: t.autoPublish ?? true,

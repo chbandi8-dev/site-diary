@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { currentHouse, currentViewer } from "@/lib/owner/session";
-import { getHouse, getStages, getTimeline, getReports, activeStages, nextStage } from "@/lib/db/owner";
+import {
+  getHouse, getStages, getTimeline, getReports, getBuilder, activeStages, nextStage,
+} from "@/lib/db/owner";
 import HouseHeader from "@/components/owner/HouseHeader";
 import Timeline from "@/components/owner/Timeline";
 import RegisterCard from "@/components/owner/RegisterCard";
@@ -15,12 +17,18 @@ export default async function MyBuild() {
   const house = await getHouse(access.houseId);
   if (!house) redirect("/my/no-access");
 
-  const [stages, updates, reports, viewer] = await Promise.all([
+  const viewer = await currentViewer(access.houseId);
+
+  const [stages, updates, reports, builder] = await Promise.all([
     getStages(access.houseId),
     getTimeline(access.houseId),
-    getReports(access.houseId),
-    currentViewer(access.houseId),
+    viewer ? getReports(access.houseId, viewer.id) : Promise.resolve([]),
+    getBuilder(),
   ]);
+
+  // What they opened the link to see. It was previously below the header, the
+  // phase rail and a form — a scroll away from the one thing they came for.
+  const latest = updates.find((u) => u.photos.length > 0)?.photos[0] ?? null;
 
   return (
     <main className="mx-auto max-w-3xl px-5 pb-24 pt-12 sm:pt-16">
@@ -29,6 +37,9 @@ export default async function MyBuild() {
         stages={stages}
         active={activeStages(stages)}
         next={nextStage(stages)}
+        lastUpdate={updates[0]?.occurredAt ?? null}
+        builder={builder}
+        latestPhoto={latest ? { url: latest.url, caption: latest.caption } : null}
       />
 
       {/*
@@ -38,7 +49,7 @@ export default async function MyBuild() {
       */}
       {!viewer && <RegisterCard />}
 
-      <Timeline updates={updates} />
+      <Timeline updates={updates} registered={Boolean(viewer)} />
 
       <ReportPanel
         viewer={viewer}
