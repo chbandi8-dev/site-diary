@@ -301,6 +301,7 @@ model House {
   forecasts     HandoverForecast[]
   defects       Defect[]
   weatherDays   WeatherDay[]
+  accessLinks   AccessLink[]
 
   @@index([status])
   @@map("houses")
@@ -322,6 +323,7 @@ model Owner {
 
   houses        HouseOwner[]
   ownerReports  OwnerReport[]
+  accessLinks   AccessLink[]
   variations    Variation[]
   notifications NotificationLog[]
 
@@ -329,7 +331,53 @@ model Owner {
   @@map("owners")
 }
 
-/// Houses commonly have two owners (a couple). Both get their own login.
+/// A permanent, personal link to one house.
+///
+/// The owner signs in to nothing. They tap the link once — from an email, a
+/// text, a bookmark, whatever — and they are looking at their build. It keeps
+/// working on a new phone, after clearing cookies, a year later.
+///
+/// That convenience is bought with an explicit trade: THE LINK IS THE
+/// CREDENTIAL. Anyone holding the URL can see that house. For build progress
+/// this is the right call — the realistic alternative is an owner who never
+/// opens the portal because signing in is friction — but it means:
+///
+///   - The token is 32 random bytes, so it cannot be guessed.
+///   - Only its SHA-256 hash is stored, so a database leak does not hand
+///     anybody a working link.
+///   - It lives in the path rather than the query string, because query
+///     strings turn up in server logs and analytics far more readily.
+///   - It is rotatable. Issuing a new link kills the old one, which is the
+///     remedy when a link reaches the wrong inbox.
+///   - Pages served through it send `Referrer-Policy: no-referrer`, so the
+///     token cannot leak to a third party through an outbound click.
+///
+/// Scope is bound at issue time. A link is for one house and one person, and
+/// nothing in the URL can widen it.
+model AccessLink {
+  id         String    @id @default(uuid()) @db.Uuid
+  houseId    String    @map("house_id") @db.Uuid
+  ownerId    String    @map("owner_id") @db.Uuid
+  /// SHA-256 of the token. The token itself is shown once, at creation, and
+  /// is not recoverable afterwards — rotate rather than look it up.
+  tokenHash  String    @unique @map("token_hash")
+  /// Last four characters of the token, purely so he can tell two links apart
+  /// in the admin list.
+  hint       String
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(3)
+  useCount   Int       @default(0) @map("use_count")
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  owner Owner @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([houseId])
+  @@index([ownerId])
+  @@map("access_links")
+}
+
+/// Houses commonly have two owners (a couple). Both get their own link.
 /// The sole input to every row-level security policy, so it is first-class and
 /// indexed rather than an implicit many-to-many. Houses are sold mid-build and
 /// couples separate: `revokedAt` — not session expiry — is where access ends.
