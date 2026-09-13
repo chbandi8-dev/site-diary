@@ -6,11 +6,16 @@ import { signOut } from "next-auth/react";
 import {
   LayoutDashboard, FolderOpen, Wrench, FileText,
   MessageSquare, Star, Settings, LogOut, ChevronRight, X,
+  HardHat, Inbox,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/admin", icon: LayoutDashboard, label: "Dashboard", exact: true },
+  // The owner update system. Placed above the marketing CMS because this is
+  // the part he opens every day.
+  { href: "/admin/houses", icon: HardHat, label: "Houses" },
+  { href: "/admin/reports", icon: Inbox, label: "From owners" },
   { href: "/admin/projects", icon: FolderOpen, label: "Projects" },
   { href: "/admin/services", icon: Wrench, label: "Services" },
   { href: "/admin/content", icon: FileText, label: "Site Content" },

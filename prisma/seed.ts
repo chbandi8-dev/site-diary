@@ -1,10 +1,15 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { seedStages } from "./seed-stages";
+import { seedTemplates } from "./seed-templates";
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log("Seeding database...");
+
+  await seedStages(prisma);
+  await seedTemplates(prisma);
 
   // Admin user
   const hashedPassword = await bcrypt.hash("Admin@123", 12);

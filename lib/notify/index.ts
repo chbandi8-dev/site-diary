@@ -57,6 +57,7 @@ export async function queue(notifications: QueuedNotification[]): Promise<string
         channel: n.channel ?? "email",
         dedupeKey: n.dedupeKey,
         subject: n.subject,
+        body: n.body || null,
         status: "queued",
       },
       select: { id: true },
@@ -80,7 +81,11 @@ export async function flush(limit = 100): Promise<{ sent: number; failed: number
     where: { status: "queued", channel: "email" },
     orderBy: { createdAt: "asc" },
     take: limit,
-    include: {
+    select: {
+      id: true,
+      audience: true,
+      subject: true,
+      body: true,
       owner: { select: { email: true, name: true } },
       user: { select: { email: true, name: true } },
       update: { select: { body: true } },
@@ -126,6 +131,7 @@ function markFailed(id: string, error: string) {
 
 type PendingRow = {
   audience: NotifyAudience;
+  body: string | null;
   update: { body: string } | null;
   report: { body: string; replyBody: string | null; kind: string } | null;
   house: { address: string } | null;
@@ -138,6 +144,9 @@ type PendingRow = {
  */
 function compose(row: PendingRow): string {
   const link = `${process.env.NEXTAUTH_URL ?? ""}/my`;
+
+  // Anything composed at queue time carries its own text.
+  if (row.body) return `${row.body}\n\nSee the photos and full history: ${link}`;
 
   if (row.audience === "staff" && row.report) {
     const who = row.owner?.name ?? "An owner";

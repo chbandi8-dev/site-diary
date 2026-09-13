@@ -678,6 +678,9 @@ model NotificationLog {
   /// and recipient, never from a timestamp.
   dedupeKey  String         @unique @map("dedupe_key")
   subject    String?
+  /// The composed message. Set for anything assembled at queue time — the
+  /// weekly digest above all, which has no single row to render from.
+  body       String?
   error      String?
   /// Provider message id, so a bounce webhook can be matched back. A typo'd
   /// owner address that bounces silently means that owner "never gets told

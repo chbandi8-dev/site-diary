@@ -96,6 +96,21 @@ export function signDownload(key: string): Promise<string> {
   });
 }
 
+/**
+ * Server-side upload. Used for owner photos, which arrive one at a time and are
+ * processed here rather than in the browser — it is the only way to be certain
+ * the EXIF block, and the home's GPS coordinates in it, are actually gone.
+ */
+export async function putObject(
+  key: string,
+  body: Buffer,
+  contentType: string
+): Promise<void> {
+  await r2().send(
+    new PutObjectCommand({ Bucket: BUCKET, Key: key, Body: body, ContentType: contentType })
+  );
+}
+
 export async function deleteObject(key: string): Promise<void> {
   await r2().send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
 }
