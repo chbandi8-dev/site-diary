@@ -17,7 +17,16 @@ import { readFileSync } from "fs";
 
 type Row = Record<string, string>;
 
-const REQUIRED = ["address", "owner1_name", "owner1_email", "current_stage"];
+/**
+ * Owner details are deliberately NOT required.
+ *
+ * The build data comes out of a spoken description reliably — an address and a
+ * stage survive a voice note. An email address does not: "dot com a u" against
+ * "dotcom au" is a silent failure where that owner simply never hears anything,
+ * which is the exact complaint this product exists to fix. So houses load
+ * first, and owners get attached from a source that can be checked.
+ */
+const REQUIRED = ["address", "current_stage"];
 
 function parseCsv(text: string): Row[] {
   const rows: string[][] = [];
@@ -105,8 +114,16 @@ async function main() {
     for (const field of REQUIRED) {
       if (!row[field]) problems.push(`Line ${line}: "${field}" is empty`);
     }
-    if (row.owner1_email && !row.owner1_email.includes("@")) {
-      problems.push(`Line ${line}: "${row.owner1_email}" is not an email address`);
+    for (const field of ["owner1_email", "owner2_email"]) {
+      const value = row[field];
+      if (value && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) {
+        problems.push(`Line ${line}: "${value}" doesn't look like an email address`);
+      }
+    }
+    if (row.owner1_name && !row.owner1_email) {
+      console.warn(
+        `  note: ${row.address} — ${row.owner1_name} has no email yet, so they can't sign in until one is added.`
+      );
     }
 
     const requested = (row.current_stage ?? "")
@@ -218,7 +235,11 @@ async function main() {
     console.log(`  ✓ ${row.address}`);
   }
 
+  const missing = planned.filter((p) => !p.row.owner1_email).length;
   console.log(`\nImported ${planned.length} house(s).`);
+  if (missing > 0) {
+    console.log(`${missing} still need an owner email before anyone can sign in.`);
+  }
   console.log("Next: invite each owner's email in Supabase Auth so they can sign in.\n");
   await prisma.$disconnect();
 }
