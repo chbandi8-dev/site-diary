@@ -1,0 +1,28 @@
+{
+  "extends": "next/core-web-vitals",
+  "rules": {
+    "no-restricted-imports": ["error", {
+      "paths": [{
+        "name": "@/lib/prisma",
+        "message": "Prisma connects as the table owner and BYPASSES row-level security. It must never serve a homeowner request. Use @/lib/supabase/server (createOwnerClient) in owner routes. See lib/supabase/README.md."
+      }]
+    }]
+  },
+  "overrides": [
+    {
+      "comment": "Admin and PM surfaces are the only places Prisma belongs.",
+      "files": [
+        "app/admin/**",
+        "app/api/admin/**",
+        "app/api/pm/**",
+        "app/api/auth/**",
+        "app/api/cron/**",
+        "lib/auth.ts",
+        "lib/db/**",
+        "prisma/**",
+        "scripts/**"
+      ],
+      "rules": { "no-restricted-imports": "off" }
+    }
+  ]
+}

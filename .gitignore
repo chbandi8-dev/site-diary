@@ -36,10 +36,10 @@ next-env.d.ts
 
 # prisma
 *.db-journal
-prisma/migrations/
-# Note: dev.db is committed for Vercel demo deployment
+*.db
+# Migrations are committed deliberately — they are the schema's source of truth.
 
-# uploads
+# uploads — legacy local dir, superseded by R2. Kept so old paths don't 404 in dev.
 /public/uploads/*
 !/public/uploads/.gitkeep
 

@@ -3,38 +3,51 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
+// ============================================================================
+// Marketing site CMS — unchanged from the original build, moved to Postgres.
+// ============================================================================
+
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  password      String
-  name          String?
-  role          String    @default("admin")
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      String   @default("admin")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  updates       Update[]
+  internalNotes InternalNote[]
+  answers       Question[]
+
+  @@map("users")
 }
 
 model Project {
   id               String   @id @default(cuid())
   title            String
   slug             String   @unique
-  shortDescription String
+  shortDescription String   @map("short_description")
   description      String
   category         String
   status           String   @default("completed")
   location         String?
   year             String?
   client           String?
-  coverImage       String?
+  coverImage       String?  @map("cover_image")
   images           String   @default("[]")
   featured         Boolean  @default(false)
   published        Boolean  @default(true)
   order            Int      @default(0)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("projects")
 }
 
 model Service {
@@ -47,8 +60,10 @@ model Service {
   features    String   @default("[]")
   published   Boolean  @default(true)
   order       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("services")
 }
 
 model Testimonial {
@@ -61,8 +76,10 @@ model Testimonial {
   avatar    String?
   published Boolean  @default(true)
   order     Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("testimonials")
 }
 
 model SiteContent {
@@ -71,7 +88,9 @@ model SiteContent {
   value     String
   type      String   @default("text")
   label     String?
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("site_content")
 }
 
 model Message {
@@ -82,5 +101,662 @@ model Message {
   service   String?
   message   String
   read      Boolean  @default(false)
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([read, createdAt])
+  @@map("messages")
+}
+
+// ============================================================================
+// Site Diary — owner update system.
+//
+// Everything below is reachable by homeowners and is protected by Postgres
+// row-level security, not by application code. See supabase/migrations/.
+// ============================================================================
+
+enum HouseStatus {
+  pre_start
+  active
+  on_hold
+  practical_completion
+  handed_over
+}
+
+/// Deliberately not a linear position. Several stages are legitimately active
+/// at once (brickwork while the roof is tiled), stages stall and resume, and
+/// some never apply — owner-supplied driveway, no second storey. Any model that
+/// assumes "stage N of 14" produces a number the PM spends the build explaining.
+enum StageStatus {
+  not_started
+  scheduled
+  in_progress
+  on_hold
+  complete
+  not_applicable
+}
+
+enum UpdateKind {
+  progress
+  delay
+  milestone
+  weather
+  decision
+}
+
+enum DecisionStatus {
+  open
+  answered
+  withdrawn
+}
+
+enum VariationStatus {
+  draft
+  sent
+  approved
+  declined
+}
+
+enum NotifyChannel {
+  email
+  sms
+  push
+}
+
+enum NotifyStatus {
+  queued
+  sent
+  failed
+}
+
+/// NSW critical-stage inspections under the EP&A Act. These legally stop work
+/// until passed, are booked 24-48h ahead, and do fail. They gate the build in a
+/// way stages do not, so they are their own object rather than a stage status.
+enum InspectionKind {
+  pre_pour_footings
+  frame
+  waterproofing
+  stormwater
+  vehicle_crossing
+  final_occupation
+  other
+}
+
+enum InspectionStatus {
+  not_required
+  to_book
+  booked
+  passed
+  failed
+}
+
+/// A progress claim is a contractually defined scope, not "he tapped Frame".
+/// Keeping it separate from StageStatus stops a mistap touching an invoice.
+enum ClaimStatus {
+  not_due
+  due
+  invoiced
+  paid
+}
+
+enum DefectStatus {
+  open
+  in_progress
+  resolved
+  disputed
+}
+
+/// Where a photo came from. `camera_roll` is the common case: he shoots with the
+/// native camera out of habit and the app ingests later.
+enum PhotoOrigin {
+  in_app
+  camera_roll
+  inbound
+}
+
+enum PhotoStatus {
+  pending
+  ready
+}
+
+/// One build. The unit everything else hangs off, and the unit of access
+/// control — an owner can reach exactly the houses joined to them.
+model House {
+  id             String      @id @default(uuid()) @db.Uuid
+  address        String
+  suburb         String?
+  storeys        Int         @default(1)
+  status         HouseStatus @default(pre_start)
+  contractCents  Int?        @map("contract_cents")
+  startDate      DateTime?   @map("start_date") @db.Date
+  /// Forecast, not a commitment. Always rendered to owners as an estimate.
+  targetHandover DateTime?   @map("target_handover") @db.Date
+  coverPhotoId   String?     @map("cover_photo_id") @db.Uuid
+
+  /// The highest-value sentence in the product, and the cheapest to produce:
+  /// "nothing on site this week — waiting on window delivery, due Thursday".
+  /// Most owner contact is this question. No-news is the content, not absence.
+  waitingOn    String?   @map("waiting_on")
+  waitingOnEta DateTime? @map("waiting_on_eta") @db.Date
+
+  /// Shown as a range, never a single date. Owners have leases ending and babies
+  /// due; they treat any single date as a promise. Changes are recorded in
+  /// HandoverForecast rather than overwritten here.
+  handoverFrom DateTime? @map("handover_from") @db.Date
+  handoverTo   DateTime? @map("handover_to") @db.Date
+
+  /// The portal must keep running past handover. The 6-10 weeks after practical
+  /// completion, when the owner has paid and holds a 40-item defects list, is
+  /// where the relationship is saved or destroyed.
+  handedOverAt           DateTime? @map("handed_over_at") @db.Date
+  defectsLiabilityEndsAt DateTime? @map("defects_liability_ends_at") @db.Date
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  owners        HouseOwner[]
+  stages        HouseStage[]
+  updates       Update[]
+  photos        Photo[]
+  internalNotes InternalNote[]
+  decisions     Decision[]
+  variations    Variation[]
+  documents     Document[]
+  questions     Question[]
+  notifications NotificationLog[]
+  inspections   Inspection[]
+  claims        ClaimMilestone[]
+  forecasts     HandoverForecast[]
+  defects       Defect[]
+  weatherDays   WeatherDay[]
+
+  @@index([status])
+  @@map("houses")
+}
+
+/// A homeowner. `authUserId` links to Supabase auth once they first open a
+/// magic link; it is null until then, so a house can be set up before the
+/// owner has ever signed in.
+model Owner {
+  id            String   @id @default(uuid()) @db.Uuid
+  authUserId    String?  @unique @map("auth_user_id") @db.Uuid
+  name          String
+  email         String   @unique
+  phone         String?
+  notifyByEmail Boolean  @default(true) @map("notify_by_email")
+  notifyBySms   Boolean  @default(false) @map("notify_by_sms")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  houses        HouseOwner[]
+  questions     Question[]
+  variations    Variation[]
+  notifications NotificationLog[]
+
+  @@index([authUserId])
+  @@map("owners")
+}
+
+/// Houses commonly have two owners (a couple). Both get their own login.
+/// The sole input to every row-level security policy, so it is first-class and
+/// indexed rather than an implicit many-to-many. Houses are sold mid-build and
+/// couples separate: `revokedAt` — not session expiry — is where access ends.
+model HouseOwner {
+  houseId   String    @map("house_id") @db.Uuid
+  ownerId   String    @map("owner_id") @db.Uuid
+  role      String    @default("owner")
+  invitedAt DateTime  @default(now()) @map("invited_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  owner Owner @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@id([houseId, ownerId])
+  @@index([ownerId, houseId])
+  @@map("house_owners")
+}
+
+/// The shared build spine. Seeded once; houses copy it into HouseStage so an
+/// individual build can deviate without rewriting the template.
+model StageTemplate {
+  id                 String  @id @default(uuid()) @db.Uuid
+  name               String
+  slug               String  @unique
+  position           Float   @unique
+  /// Owner-facing rollup. Thirty-odd stages is the detail he needs for evidence
+  /// and claims; owners see eight or nine phases.
+  phase              String
+  /// True for the stages that trigger a progress claim.
+  isPaymentMilestone Boolean @default(false) @map("is_payment_milestone")
+  /// Not every house has a demolition, piering, or landscaping stage. These
+  /// default to `not_applicable` rather than cluttering a build they don't apply to.
+  conditional        Boolean @default(false)
+  /// Typical working days, used to seed estimates on a new house.
+  typicalDays        Int?    @map("typical_days")
+
+  houseStages HouseStage[]
+
+  @@map("stage_templates")
+}
+
+/// A record, not a pointer. `name`, `position` and `isPaymentMilestone` are
+/// copied from the template at instantiation: renaming or reordering a template
+/// stage must never rewrite the history of in-flight or completed houses,
+/// including the dates attached to past progress claims. Templates are versioned
+/// documents; house stages are what actually happened.
+///
+/// `position` is a float so a stage can be inserted between two others without
+/// renumbering every row (and fighting a unique constraint) on every reorder.
+model HouseStage {
+  id                 String      @id @default(uuid()) @db.Uuid
+  houseId            String      @map("house_id") @db.Uuid
+  templateId         String?     @map("template_id") @db.Uuid
+  name               String
+  position           Float
+  isPaymentMilestone Boolean     @default(false) @map("is_payment_milestone")
+  plannedDays        Int?        @map("planned_days")
+  status             StageStatus @default(not_started)
+
+  /// Derived, not authored. Recomputed from start date, actual completions,
+  /// planned durations and the working-day calendar (wet days, public holidays,
+  /// the Christmas shutdown). Stored only so rendering is cheap and consistent.
+  estimatedEnd DateTime? @map("estimated_end") @db.Date
+
+  startedAt   DateTime? @map("started_at") @db.Timestamptz(3)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
+
+  house       House           @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  template    StageTemplate?  @relation(fields: [templateId], references: [id])
+  updates     Update[]
+  photos      Photo[]
+  estimates   StageEstimate[]
+  inspections Inspection[]
+
+  @@index([houseId, position])
+  @@map("house_stages")
+}
+
+/// Every time an estimate the owner has already been shown changes, append a
+/// row. This is what makes "lock-up moved from 12 Mar to 26 Mar because of six
+/// wet days" possible — the single most valuable message in the product, and
+/// unsendable if the old date was overwritten.
+model StageEstimate {
+  id           String    @id @default(uuid()) @db.Uuid
+  houseStageId String    @map("house_stage_id") @db.Uuid
+  estimatedEnd DateTime  @map("estimated_end") @db.Date
+  reason       String?
+  computedAt   DateTime  @default(now()) @map("computed_at") @db.Timestamptz(3)
+  /// Whether this revision was actually communicated, and when.
+  notifiedAt   DateTime? @map("notified_at") @db.Timestamptz(3)
+
+  houseStage HouseStage @relation(fields: [houseStageId], references: [id], onDelete: Cascade)
+
+  @@index([houseStageId, computedAt])
+  @@map("stage_estimates")
+}
+
+/// An owner-visible entry on the timeline. If it is in this table, a
+/// homeowner can read it — there is no visibility flag to get wrong.
+model Update {
+  id       String     @id @default(uuid()) @db.Uuid
+  houseId  String     @map("house_id") @db.Uuid
+  stageId  String?    @map("stage_id") @db.Uuid
+  kind     UpdateKind @default(progress)
+  body     String
+  authorId String     @map("author_id")
+
+  /// When it happened on site, which is what the owner's timeline shows.
+  /// A 9am slab pour captured offline and synced at 5pm must still read 9am.
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(3)
+
+  /// Null while drafting. Owners only ever see published rows, and publishing
+  /// is a deliberate act — see `holdUntil`.
+  publishedAt   DateTime? @map("published_at") @db.Timestamptz(3)
+  publishedById String?   @map("published_by_id")
+
+  /// Publishing is asymmetric. Good news can fire automatically; a date moving
+  /// backwards is a phone call, not a push notification. An automated "your
+  /// fixing stage moved to 14 March" read by an owner whose lease ends on the
+  /// 10th produces a 5pm call he isn't ready for. This holds the update until
+  /// he has made that call.
+  holdUntil   DateTime? @map("hold_until") @db.Timestamptz(3)
+  /// Required on anything that moves a date later. Owners forgive delays they
+  /// were given a reason for.
+  delayReason String?   @map("delay_reason")
+
+  /// Soft delete: hard-deleting an update an owner was already texted about
+  /// leaves the notification log contradicting the database.
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  house         House             @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  stage         HouseStage?       @relation(fields: [stageId], references: [id])
+  author        User              @relation(fields: [authorId], references: [id])
+  photos        Photo[]
+  notifications NotificationLog[]
+
+  @@index([houseId, occurredAt(sort: Desc)])
+  @@index([houseId, publishedAt])
+  @@map("updates")
+}
+
+/// Deliberately a separate table rather than a flag on Update. An owner-facing
+/// policy mistake can expose a mis-set column; it cannot expose a table that
+/// grants homeowners no access at all.
+model InternalNote {
+  id        String   @id @default(uuid()) @db.Uuid
+  houseId   String   @map("house_id") @db.Uuid
+  body      String
+  authorId  String   @map("author_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  house  House @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  author User  @relation(fields: [authorId], references: [id])
+
+  @@index([houseId, createdAt])
+  @@map("internal_notes")
+}
+
+/// The id is supplied by the client so that a retried capture is idempotent:
+/// without it, an upload that times out and is retried produces two photos and
+/// two "slab poured" notifications to the same owner.
+///
+/// A photo is owner-visible if and only if it hangs off a published update.
+/// There is no visibility flag to forget — most of his photos are evidence
+/// (a defect for a subbie, proof for a claim, site rubbish), not owner content,
+/// so private is the only safe default and promotion has to be deliberate.
+model Photo {
+  id       String      @id @db.Uuid
+  /// Null until triaged. Camera-roll ingest lands here before it is assigned.
+  houseId  String?     @map("house_id") @db.Uuid
+  updateId String?     @map("update_id") @db.Uuid
+  stageId  String?     @map("stage_id") @db.Uuid
+  origin   PhotoOrigin @default(in_app)
+  /// `pending` until the bytes are confirmed in R2. Galleries read `ready`
+  /// only, so a broken image tile is impossible by construction.
+  status   PhotoStatus @default(pending)
+  /// Object key in R2, always chosen server-side. Bytes are served through a
+  /// short-lived signed URL; the bucket is private.
+  key      String      @unique
+  width    Int?
+  height   Int?
+  bytes    Int?
+  caption  String?
+
+  /// Read from EXIF before the image is re-encoded, and used to auto-assign the
+  /// house — detached houses are hundreds of metres apart, so GPS identifies the
+  /// site far more reliably than he can tap it. Never exposed to owners: it is
+  /// the precise location of somebody's home.
+  capturedLat Float? @map("captured_lat")
+  capturedLng Float? @map("captured_lng")
+
+  /// Consent gate for reusing a photo on the marketing site, since site photos
+  /// routinely contain identifiable workers.
+  marketingOk Boolean @default(false) @map("marketing_ok")
+
+  takenAt   DateTime? @map("taken_at") @db.Timestamptz(3)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  house  House?      @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  update Update?     @relation(fields: [updateId], references: [id], onDelete: SetNull)
+  stage  HouseStage? @relation(fields: [stageId], references: [id])
+
+  @@index([houseId, takenAt])
+  @@index([updateId])
+  @@index([status])
+  @@map("photos")
+}
+
+/// Something the builder needs the owner to choose. The timestamps are the
+/// point: they establish who held up the build, and when.
+model Decision {
+  id          String         @id @default(uuid()) @db.Uuid
+  houseId     String         @map("house_id") @db.Uuid
+  question    String
+  detail      String?
+  options     Json?
+  dueDate     DateTime?      @map("due_date") @db.Date
+  /// What slips if this is late — shown to the owner verbatim.
+  consequence String?
+  status      DecisionStatus @default(open)
+  askedAt     DateTime       @default(now()) @map("asked_at") @db.Timestamptz(3)
+  answeredAt  DateTime?      @map("answered_at") @db.Timestamptz(3)
+  answer      String?
+
+  house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
+
+  @@index([houseId, status])
+  @@map("decisions")
+}
+
+/// Contract-grade. Rows are append-only in practice: once approved, the
+/// approval fields are never rewritten.
+model Variation {
+  id           String          @id @default(uuid()) @db.Uuid
+  houseId      String          @map("house_id") @db.Uuid
+  reference    String
+  description  String
+  amountCents  Int             @map("amount_cents")
+  status       VariationStatus @default(draft)
+  sentAt       DateTime?       @map("sent_at") @db.Timestamptz(3)
+  approvedAt   DateTime?       @map("approved_at") @db.Timestamptz(3)
+  approvedById String?         @map("approved_by_id") @db.Uuid
+  /// Captured at approval for evidentiary value.
+  approvedIp   String?         @map("approved_ip")
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  house      House  @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  approvedBy Owner? @relation(fields: [approvedById], references: [id])
+
+  @@unique([houseId, reference])
+  @@index([houseId, status])
+  @@map("variations")
+}
+
+model Document {
+  id         String   @id @default(uuid()) @db.Uuid
+  houseId    String   @map("house_id") @db.Uuid
+  title      String
+  category   String   @default("other")
+  key        String   @unique
+  bytes      Int?
+  mimeType   String?  @map("mime_type")
+  uploadedAt DateTime @default(now()) @map("uploaded_at") @db.Timestamptz(3)
+
+  house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
+
+  @@index([houseId, category])
+  @@map("documents")
+}
+
+model Question {
+  id           String    @id @default(uuid()) @db.Uuid
+  houseId      String    @map("house_id") @db.Uuid
+  ownerId      String    @map("owner_id") @db.Uuid
+  body         String
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  answerBody   String?   @map("answer_body")
+  answeredAt   DateTime? @map("answered_at") @db.Timestamptz(3)
+  answeredById String?   @map("answered_by_id")
+
+  house      House @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  owner      Owner @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  answeredBy User? @relation(fields: [answeredById], references: [id])
+
+  @@index([houseId, createdAt])
+  @@map("questions")
+}
+
+/// Delivery log. `dedupeKey` is what stops a retried job sending the same
+/// Friday digest twice.
+model NotificationLog {
+  id        String        @id @default(uuid()) @db.Uuid
+  houseId   String?       @map("house_id") @db.Uuid
+  ownerId   String?       @map("owner_id") @db.Uuid
+  updateId  String?       @map("update_id") @db.Uuid
+  channel   NotifyChannel
+  status    NotifyStatus  @default(queued)
+  dedupeKey String        @unique @map("dedupe_key")
+  subject   String?
+  error     String?
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  sentAt    DateTime?     @map("sent_at") @db.Timestamptz(3)
+
+  house  House?  @relation(fields: [houseId], references: [id], onDelete: SetNull)
+  owner  Owner?  @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  update Update? @relation(fields: [updateId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId, createdAt])
+  @@index([status])
+  @@map("notification_logs")
+}
+
+/// NSW critical-stage inspections. These are the real gates — they legally stop
+/// work until passed, are booked a day or two ahead, and do fail. Modelling
+/// them as a stage status hides the fact that a passed frame inspection is both
+/// a blocker cleared and excellent owner content.
+model Inspection {
+  id           String           @id @default(uuid()) @db.Uuid
+  houseId      String           @map("house_id") @db.Uuid
+  houseStageId String?          @map("house_stage_id") @db.Uuid
+  kind         InspectionKind
+  status       InspectionStatus @default(to_book)
+  /// Principal certifier or council, whoever is attending.
+  inspector    String?
+  bookedFor    DateTime?        @map("booked_for") @db.Timestamptz(3)
+  resultAt     DateTime?        @map("result_at") @db.Timestamptz(3)
+  /// Present on a failure. Owner-visible in plain English, without naming trades.
+  notes        String?
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  house      House       @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  houseStage HouseStage? @relation(fields: [houseStageId], references: [id], onDelete: SetNull)
+
+  @@index([houseId, status])
+  @@map("inspections")
+}
+
+/// A progress claim under the contract. Kept separate from HouseStage because a
+/// claim is a contractually defined scope with a certification gate — not "he
+/// tapped Frame". A mistap must never touch an invoice, and an owner must never
+/// see "frame complete" before the frame inspection passed.
+model ClaimMilestone {
+  id          String      @id @default(uuid()) @db.Uuid
+  houseId     String      @map("house_id") @db.Uuid
+  name        String
+  position    Int
+  /// The contract's own wording for what this claim covers. Owners ask "why am
+  /// I invoiced for frame when the frame isn't finished" — this is the answer.
+  definition  String?
+  amountCents Int         @map("amount_cents")
+  status      ClaimStatus @default(not_due)
+  dueAt       DateTime?   @map("due_at") @db.Date
+  invoicedAt  DateTime?   @map("invoiced_at") @db.Timestamptz(3)
+  paidAt      DateTime?   @map("paid_at") @db.Timestamptz(3)
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
+
+  @@unique([houseId, position])
+  @@index([houseId, status])
+  @@map("claim_milestones")
+}
+
+/// Handover date history. Owners ask this monthly and treat any answer as a
+/// promise, so the date is shown as a range and every move is recorded with a
+/// reason. Quietly shifting it and letting the owner notice is the worst
+/// version of this feature.
+model HandoverForecast {
+  id         String    @id @default(uuid()) @db.Uuid
+  houseId    String    @map("house_id") @db.Uuid
+  from       DateTime  @db.Date
+  to         DateTime  @db.Date
+  reason     String?
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  notifiedAt DateTime? @map("notified_at") @db.Timestamptz(3)
+
+  house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
+
+  @@index([houseId, createdAt])
+  @@map("handover_forecasts")
+}
+
+/// Practical-completion punch list and the defects liability period after it.
+/// The weeks after handover — owner has paid, holds a forty-item list, and
+/// every builder goes quiet — are where the relationship is decided.
+model Defect {
+  id            String       @id @default(uuid()) @db.Uuid
+  houseId       String       @map("house_id") @db.Uuid
+  reference     String?
+  location      String?
+  description   String
+  status        DefectStatus @default(open)
+  /// True when the owner raised it, false when the builder's own sweep did.
+  raisedByOwner Boolean      @default(false) @map("raised_by_owner")
+  raisedAt      DateTime     @default(now()) @map("raised_at") @db.Timestamptz(3)
+  targetAt      DateTime?    @map("target_at") @db.Date
+  resolvedAt    DateTime?    @map("resolved_at") @db.Timestamptz(3)
+  updatedAt     DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
+
+  @@index([houseId, status])
+  @@map("defects")
+}
+
+/// Wet-day log, per site per day.
+///
+/// This is not owner comfort content. Inclement weather is a ground for an
+/// extension of time under standard HIA/MBA contracts, EOT notices are
+/// time-limited, and small builders routinely miss them. An automatic per-site
+/// rainfall record that generates the notice may be worth more than the owner
+/// portal it is a by-product of.
+model WeatherDay {
+  id           String    @id @default(uuid()) @db.Uuid
+  houseId      String    @map("house_id") @db.Uuid
+  date         DateTime  @db.Date
+  rainfallMm   Float?    @map("rainfall_mm")
+  /// Whether work was actually lost, which is the contractual test — not
+  /// whether it rained.
+  workLost     Boolean   @default(false) @map("work_lost")
+  source       String    @default("bom")
+  eotClaimedAt DateTime? @map("eot_claimed_at") @db.Timestamptz(3)
+
+  house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
+
+  @@unique([houseId, date])
+  @@index([houseId, workLost])
+  @@map("weather_days")
+}
+
+/// Append-only audit for the two records that become evidence.
+///
+/// `Variation.status` and `Decision.answeredAt` mutated in place destroy the
+/// thing that gives them value. The whole point of the decisions register is
+/// "asked on the 3rd, answered on the 21st"; one UPDATE overwriting a timestamp
+/// throws that away. The parent row keeps a denormalised current status for
+/// cheap reads; this table is the record.
+model EvidenceEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  /// "variation" | "decision" | "document"
+  subject   String
+  subjectId String   @map("subject_id") @db.Uuid
+  event     String
+  /// "owner" | "staff" | "system"
+  actorType String   @map("actor_type")
+  actorId   String?  @map("actor_id")
+  /// Captured server-side at the moment of the act. A client-supplied
+  /// timestamp is worthless in a dispute.
+  at        DateTime @default(now()) @db.Timestamptz(3)
+  ip        String?
+  userAgent String?  @map("user_agent")
+  payload   Json?
+
+  @@index([subject, subjectId, at])
+  @@map("evidence_events")
 }
