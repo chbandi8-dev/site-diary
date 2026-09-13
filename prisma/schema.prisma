@@ -275,6 +275,20 @@ model House {
   waitingOn    String?   @map("waiting_on")
   waitingOnEta DateTime? @map("waiting_on_eta") @db.Date
 
+  /// What is happening at this house NEXT week, in his own words.
+  ///
+  /// The half of the Friday email that owners actually want. A summary of the
+  /// week just gone tells them what they could already see in the photos; what
+  /// is coming is the thing they cannot know and the thing they ring to ask.
+  ///
+  /// Dictated rather than typed — he taps the microphone on his phone keyboard
+  /// and talks. No transcription service is involved, which is why there is
+  /// nothing to configure and nothing to pay for.
+  nextWeek      String?   @map("next_week")
+  /// Stamped when he sets it, so a line written three weeks ago is never sent
+  /// as though it were this week's plan.
+  nextWeekSetAt DateTime? @map("next_week_set_at") @db.Timestamptz(3)
+
   /// Shown as a range, never a single date. Owners have leases ending and babies
   /// due; they treat any single date as a promise. Changes are recorded in
   /// HandoverForecast rather than overwritten here.
@@ -719,31 +733,36 @@ model OwnerReport {
 /// Delivery log. `dedupeKey` is what stops a retried job sending the same
 /// Friday digest twice.
 model NotificationLog {
-  id         String         @id @default(uuid()) @db.Uuid
-  audience   NotifyAudience @default(owner)
-  houseId    String?        @map("house_id") @db.Uuid
+  id            String         @id @default(uuid()) @db.Uuid
+  audience      NotifyAudience @default(owner)
+  houseId       String?        @map("house_id") @db.Uuid
   /// Set when the recipient is a homeowner.
-  ownerId    String?        @map("owner_id") @db.Uuid
+  ownerId       String?        @map("owner_id") @db.Uuid
   /// Set when the recipient is staff — he is told when an owner raises something.
-  userId     String?        @map("user_id")
-  updateId   String?        @map("update_id") @db.Uuid
-  reportId   String?        @map("report_id") @db.Uuid
-  channel    NotifyChannel
-  status     NotifyStatus   @default(queued)
+  userId        String?        @map("user_id")
+  updateId      String?        @map("update_id") @db.Uuid
+  reportId      String?        @map("report_id") @db.Uuid
+  channel       NotifyChannel
+  status        NotifyStatus   @default(queued)
   /// Stops a retried job sending the same thing twice. Built from the subject
   /// and recipient, never from a timestamp.
-  dedupeKey  String         @unique @map("dedupe_key")
-  subject    String?
+  dedupeKey     String         @unique @map("dedupe_key")
+  subject       String?
   /// The composed message. Set for anything assembled at queue time — the
   /// weekly digest above all, which has no single row to render from.
-  body       String?
-  error      String?
+  body          String?
+  error         String?
   /// Provider message id, so a bounce webhook can be matched back. A typo'd
   /// owner address that bounces silently means that owner "never gets told
   /// anything" — precisely the complaint this product exists to kill.
-  providerId String?        @map("provider_id")
-  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
-  sentAt     DateTime?      @map("sent_at") @db.Timestamptz(3)
+  providerId    String?        @map("provider_id")
+  /// A 429 from the provider or a DNS blip must not lose an owner's update.
+  /// Failures back off and are retried rather than being marked failed and
+  /// forgotten.
+  attempts      Int            @default(0)
+  nextAttemptAt DateTime?      @map("next_attempt_at") @db.Timestamptz(3)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  sentAt        DateTime?      @map("sent_at") @db.Timestamptz(3)
 
   house  House?       @relation(fields: [houseId], references: [id], onDelete: SetNull)
   owner  Owner?       @relation(fields: [ownerId], references: [id], onDelete: SetNull)
