@@ -24,6 +24,7 @@ model User {
   updates       Update[]
   internalNotes InternalNote[]
   ownerReplies  OwnerReport[]
+  notifications NotificationLog[]
 
   @@map("users")
 }
@@ -164,6 +165,14 @@ enum NotifyChannel {
   email
   sms
   push
+}
+
+/// Who a notification is for. The queue runs in both directions: owners hear
+/// when something happens at their house, and he hears when an owner raises
+/// something.
+enum NotifyAudience {
+  owner
+  staff
 }
 
 enum NotifyStatus {
@@ -454,6 +463,10 @@ model Update {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  /// Which one-tap template produced this, if any. Worth keeping: it tells you
+  /// which buttons actually get used, and which are dead weight on the screen.
+  templateKey String? @map("template_key")
+
   house         House             @relation(fields: [houseId], references: [id], onDelete: Cascade)
   stage         HouseStage?       @relation(fields: [stageId], references: [id])
   author        User              @relation(fields: [authorId], references: [id])
@@ -635,11 +648,12 @@ model OwnerReport {
   /// Set when a report turns out to be a real defect and joins the punch list.
   defectId String? @map("defect_id") @db.Uuid
 
-  house     House   @relation(fields: [houseId], references: [id], onDelete: Cascade)
-  owner     Owner   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  photo     Photo?  @relation(fields: [photoId], references: [id], onDelete: SetNull)
-  defect    Defect? @relation(fields: [defectId], references: [id], onDelete: SetNull)
-  repliedBy User?   @relation(fields: [repliedById], references: [id])
+  house         House             @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  owner         Owner             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  photo         Photo?            @relation(fields: [photoId], references: [id], onDelete: SetNull)
+  defect        Defect?           @relation(fields: [defectId], references: [id], onDelete: SetNull)
+  repliedBy     User?             @relation(fields: [repliedById], references: [id])
+  notifications NotificationLog[]
 
   @@index([houseId, createdAt])
   @@index([status, createdAt])
@@ -649,25 +663,82 @@ model OwnerReport {
 /// Delivery log. `dedupeKey` is what stops a retried job sending the same
 /// Friday digest twice.
 model NotificationLog {
-  id        String        @id @default(uuid()) @db.Uuid
-  houseId   String?       @map("house_id") @db.Uuid
-  ownerId   String?       @map("owner_id") @db.Uuid
-  updateId  String?       @map("update_id") @db.Uuid
-  channel   NotifyChannel
-  status    NotifyStatus  @default(queued)
-  dedupeKey String        @unique @map("dedupe_key")
-  subject   String?
-  error     String?
-  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
-  sentAt    DateTime?     @map("sent_at") @db.Timestamptz(3)
+  id         String         @id @default(uuid()) @db.Uuid
+  audience   NotifyAudience @default(owner)
+  houseId    String?        @map("house_id") @db.Uuid
+  /// Set when the recipient is a homeowner.
+  ownerId    String?        @map("owner_id") @db.Uuid
+  /// Set when the recipient is staff — he is told when an owner raises something.
+  userId     String?        @map("user_id")
+  updateId   String?        @map("update_id") @db.Uuid
+  reportId   String?        @map("report_id") @db.Uuid
+  channel    NotifyChannel
+  status     NotifyStatus   @default(queued)
+  /// Stops a retried job sending the same thing twice. Built from the subject
+  /// and recipient, never from a timestamp.
+  dedupeKey  String         @unique @map("dedupe_key")
+  subject    String?
+  error      String?
+  /// Provider message id, so a bounce webhook can be matched back. A typo'd
+  /// owner address that bounces silently means that owner "never gets told
+  /// anything" — precisely the complaint this product exists to kill.
+  providerId String?        @map("provider_id")
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  sentAt     DateTime?      @map("sent_at") @db.Timestamptz(3)
 
-  house  House?  @relation(fields: [houseId], references: [id], onDelete: SetNull)
-  owner  Owner?  @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  update Update? @relation(fields: [updateId], references: [id], onDelete: SetNull)
+  house  House?       @relation(fields: [houseId], references: [id], onDelete: SetNull)
+  owner  Owner?       @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  user   User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  update Update?      @relation(fields: [updateId], references: [id], onDelete: SetNull)
+  report OwnerReport? @relation(fields: [reportId], references: [id], onDelete: SetNull)
 
   @@index([ownerId, createdAt])
+  @@index([userId, createdAt])
   @@index([status])
   @@map("notification_logs")
+}
+
+/// A one-tap update.
+///
+/// This is what makes logging at the house realistic. Writing prose on a site
+/// is the part that does not survive a real day — picking a pre-written line
+/// does. He taps a button, fills at most one blank, attaches the photos he
+/// just took, and it is gone.
+///
+/// `body` may contain {slot} placeholders. Slots are filled from a short picker,
+/// never a free-text keyboard, because a keyboard on a site in the sun with
+/// dusty hands is the thing being designed out.
+model MessageTemplate {
+  id       String     @id @default(uuid()) @db.Uuid
+  key      String     @unique
+  /// What he reads on the button. Short enough to scan one-handed.
+  label    String
+  /// What the owner reads. Written in their language, not site language.
+  body     String
+  kind     UpdateKind @default(progress)
+  /// Groups the buttons on screen: "Today", "Progress", "Held up", "Milestones".
+  category String
+
+  /// Slot definitions, e.g. [{"name":"trade","options":["bricklayer","plumber"]}].
+  /// Null means the template sends as written.
+  slots Json?
+
+  /// Which stages this is offered for. Empty means always. Keeps the button
+  /// list short — he should never scroll past a waterproofing line to reach
+  /// "slab poured".
+  stageSlugs String[] @map("stage_slugs")
+
+  /// Good news can send itself. Anything that moves a date later is drafted
+  /// instead, so he can make the phone call before the owner reads it.
+  autoPublish Boolean @default(true) @map("auto_publish")
+  /// True where an update without a photo would be unconvincing.
+  wantsPhoto  Boolean @default(false) @map("wants_photo")
+
+  position Int
+  active   Boolean @default(true)
+
+  @@index([category, position])
+  @@map("message_templates")
 }
 
 /// NSW critical-stage inspections. These are the real gates — they legally stop
