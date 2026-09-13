@@ -228,8 +228,17 @@ export async function seedDemo(prisma: PrismaClient) {
     }
   }
 
-  console.log(`✓ ${HOUSES.length} example houses seeded (emails end in @${DEMO_TAG})`);
-  console.log("  Open a house in the admin and tap Create link to walk the owner view.");
+  console.log(`\n✓ ${HOUSES.length} example houses seeded (emails end in @${DEMO_TAG})\n`);
+  console.log("Owner links — open any of these to see what a homeowner sees:\n");
+  for (const spec of HOUSES) {
+    const house = await prisma.house.findFirstOrThrow({
+      where: { address: spec.address },
+      select: { id: true },
+    });
+    const token = await issueHouseLink(house.id);
+    console.log(`  ${spec.address}`);
+    console.log(`  ${process.env.NEXTAUTH_URL ?? "http://localhost:3000"}/h/${token}\n`);
+  }
 }
 
 if (require.main === module) {

@@ -11,8 +11,8 @@ manual step between an empty site and a working one.
 | `address` | Street address. No suburb. | — |
 | `suburb` | Suburb only. | Leave blank |
 | `storeys` | `1` or `2` | `1` |
-| `owner1_name` / `owner1_email` | The owner's real email — it is how they sign in. | Required |
-| `owner2_name` / `owner2_email` | The second owner, where a couple is on the contract. Both get their own sign-in and see the same page. | Leave blank |
+| `owner1_name` / `owner1_email` | Optional. Owners add their own details when they open the house link, which is less work and more accurate. | Leave blank |
+| `owner2_name` / `owner2_email` | Optional, same as above. | Leave blank |
 | `current_stage` | Where the build is **right now**. Use the names in the list below, or his own words — the importer matches loosely and tells you what it could not place. | — |
 | `waiting_on` | What is holding it up, in plain English: `window delivery`, `certifier sign-off`, `owner tile selection`. This becomes the first line the owner reads. | Leave blank |
 | `waiting_on_date` | When he expects it, `YYYY-MM-DD`. | Leave blank |
@@ -61,9 +61,10 @@ name is much easier to fix before the rows exist.
 The import is safe to re-run: houses are matched on address, so correcting the
 sheet and running it again updates rather than duplicates.
 
-## Then, once per owner
+## Then, once per house
 
-Invite each owner's email in Supabase (Authentication → Users → Invite). That is
-what lets them request a sign-in code. Until then their house exists but they
-cannot reach it — which is useful: you can load everything, check it looks right,
-and invite people when you are ready for them to look.
+Open it in the admin, tap **Create link**, and send that link on WhatsApp. The
+owners add their own name and email once they are looking at the page.
+
+Nothing is visible to anyone until a link is created, so everything can be
+loaded and checked first.
