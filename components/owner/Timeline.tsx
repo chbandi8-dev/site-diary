@@ -1,8 +1,12 @@
+"use client";
+
+import Reveal from "./Reveal";
+import PhotoGrid from "./PhotoGrid";
+
 type Photo = { id: string; key: string; caption: string | null; url: string };
 type Update = { id: string; kind: string; body: string; occurred_at: string; photos: Photo[] };
 
 const KIND_LABEL: Record<string, string> = {
-  progress: "Progress",
   milestone: "Milestone",
   delay: "Timing",
   weather: "Weather",
@@ -12,74 +16,98 @@ const KIND_LABEL: Record<string, string> = {
 
 function formatWhen(iso: string): string {
   return new Date(iso).toLocaleDateString("en-AU", {
-    weekday: "short",
+    weekday: "long",
     day: "numeric",
-    month: "short",
+    month: "long",
   });
+}
+
+function monthOf(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-AU", { month: "long", year: "numeric" });
 }
 
 export default function Timeline({ updates }: { updates: Update[] }) {
   if (updates.length === 0) {
     return (
-      <section className="border-t border-text/10 pt-8">
+      <section className="border-t border-text/10 pt-10">
         <h2 className="mb-3 font-display text-2xl tracking-tight">Nothing posted yet</h2>
         <p className="max-w-prose leading-relaxed text-text/65">
           Updates will appear here as work starts. You&apos;ll get an email each time, so there&apos;s
-          no need to keep checking.
+          no need to keep checking back.
         </p>
       </section>
     );
   }
 
+  let lastMonth = "";
+
   return (
-    <section>
-      <h2 className="mb-6 font-display text-2xl tracking-tight">What&apos;s been happening</h2>
-      <ol className="flex flex-col">
-        {updates.map((u) => (
-          <li key={u.id} className="border-t border-text/10 py-7 first:border-t-0 first:pt-0">
-            <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <time
-                dateTime={u.occurred_at}
-                className="font-mono text-[11px] uppercase tracking-[0.12em] text-text/45"
-              >
-                {formatWhen(u.occurred_at)}
-              </time>
-              {u.kind !== "progress" && (
-                <span className="font-mono text-[10px] uppercase tracking-[0.13em] text-accent-primary">
-                  {KIND_LABEL[u.kind] ?? u.kind}
-                </span>
+    <section className="mt-16">
+      <h2 className="mb-8 font-display text-[clamp(1.5rem,4vw,2rem)] tracking-tight">
+        What&apos;s been happening
+      </h2>
+
+      <ol className="relative flex flex-col">
+        {/* The spine. Decorative — the dates carry the meaning. */}
+        <span
+          aria-hidden="true"
+          className="absolute left-[5px] top-2 bottom-2 w-px bg-text/12 sm:left-[7px]"
+        />
+
+        {updates.map((u, i) => {
+          const month = monthOf(u.occurred_at);
+          const showMonth = month !== lastMonth;
+          lastMonth = month;
+
+          return (
+            <li key={u.id} className="relative pl-7 sm:pl-10">
+              {showMonth && (
+                <Reveal>
+                  <p className="-ml-7 mb-5 mt-9 font-mono text-[10px] uppercase tracking-[0.16em] text-text/40 first:mt-0 sm:-ml-10">
+                    {month}
+                  </p>
+                </Reveal>
               )}
-            </div>
 
-            <p className="max-w-prose leading-relaxed">{u.body}</p>
+              <Reveal delay={Math.min(i, 4) * 0.04} className="pb-9">
+                <span
+                  aria-hidden="true"
+                  className={
+                    "absolute left-0 mt-[7px] block h-[11px] w-[11px] rounded-full border-2 border-bg sm:h-[15px] sm:w-[15px] " +
+                    (u.kind === "milestone" ? "bg-accent-primary" : "bg-text/25")
+                  }
+                />
 
-            {u.photos.length > 0 && (
-              <ul className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {u.photos.map((p) => (
-                  <li key={p.id}>
-                    {/*
-                      Served from a signed URL that changes on every render, so
-                      next/image would cache nothing and burn transformation
-                      quota on each scroll. A plain img is the right tool.
-                    */}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={p.url}
-                      alt={p.caption ?? `Site photo from ${formatWhen(u.occurred_at)}`}
-                      loading="lazy"
-                      className="aspect-[4/3] w-full bg-surface object-cover"
-                    />
-                    {p.caption && (
-                      <span className="mt-1 block text-xs leading-snug text-text/55">
-                        {p.caption}
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </li>
-        ))}
+                <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <time
+                    dateTime={u.occurred_at}
+                    className="font-mono text-[11px] uppercase tracking-[0.12em] text-text/45"
+                  >
+                    {formatWhen(u.occurred_at)}
+                  </time>
+                  {KIND_LABEL[u.kind] && (
+                    <span className="font-mono text-[10px] uppercase tracking-[0.13em] text-accent-primary">
+                      {KIND_LABEL[u.kind]}
+                    </span>
+                  )}
+                </div>
+
+                <p
+                  className={
+                    "max-w-prose leading-relaxed " +
+                    (u.kind === "milestone"
+                      ? "font-display text-xl leading-snug tracking-tight sm:text-2xl"
+                      : "")
+                  }
+                >
+                  {u.body}
+                </p>
+
+                <PhotoGrid photos={u.photos} label={formatWhen(u.occurred_at)} />
+              </Reveal>
+            </li>
+          );
+        })}
       </ol>
     </section>
   );

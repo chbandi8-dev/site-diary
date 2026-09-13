@@ -384,6 +384,9 @@ model HouseStage {
   houseId            String      @map("house_id") @db.Uuid
   templateId         String?     @map("template_id") @db.Uuid
   name               String
+  /// Owner-facing grouping, copied from the template alongside the name so a
+  /// later regrouping cannot rewrite what a finished build showed its owner.
+  phase              String?
   position           Float
   isPaymentMilestone Boolean     @default(false) @map("is_payment_milestone")
   plannedDays        Int?        @map("planned_days")

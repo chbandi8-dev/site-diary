@@ -34,6 +34,7 @@ export type OwnerHouse = {
 export type OwnerStage = {
   id: string;
   name: string;
+  phase: string | null;
   position: number;
   status: string;
   estimated_end: string | null;
@@ -94,7 +95,7 @@ export async function getStages(houseId: string): Promise<OwnerStage[]> {
   const supabase = createOwnerClient();
   const { data, error } = await supabase
     .from("house_stages")
-    .select("id, name, position, status, estimated_end, completed_at, is_payment_milestone")
+    .select("id, name, phase, position, status, estimated_end, completed_at, is_payment_milestone")
     .eq("house_id", houseId)
     .order("position");
 

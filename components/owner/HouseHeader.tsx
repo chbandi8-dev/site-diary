@@ -1,4 +1,8 @@
+"use client";
+
+import { motion, useReducedMotion } from "framer-motion";
 import type { OwnerHouse, OwnerStage } from "@/lib/db/owner";
+import PhaseRail, { toPhases } from "./PhaseRail";
 
 function formatRange(from: string | null, to: string | null): string | null {
   if (!from && !to) return null;
@@ -16,34 +20,57 @@ function formatDay(d: string): string {
   return new Date(d).toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" });
 }
 
+const ease = [0.22, 0.61, 0.36, 1] as const;
+
 export default function HouseHeader({
-  house, percent, active, next, stageCount,
+  house,
+  stages,
+  active,
+  next,
 }: {
   house: OwnerHouse;
-  percent: number;
+  stages: OwnerStage[];
   active: OwnerStage[];
   next?: OwnerStage;
-  stageCount: number;
 }) {
+  const reduced = useReducedMotion();
   const handover = formatRange(house.handover_from, house.handover_to);
 
+  const rise = (delay: number) =>
+    reduced
+      ? {}
+      : {
+          initial: { opacity: 0, y: 12 },
+          animate: { opacity: 1, y: 0 },
+          transition: { duration: 0.6, delay, ease },
+        };
+
   return (
-    <header className="mb-12">
-      <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-text/45">
+    <header>
+      <motion.p
+        {...rise(0)}
+        className="font-mono text-[11px] uppercase tracking-[0.16em] text-text/45"
+      >
         {house.storeys === 2 ? "Double storey" : "Single storey"}
         {house.suburb ? ` · ${house.suburb}` : ""}
-      </p>
-      <h1 className="mt-2 font-display text-[clamp(2rem,7vw,3rem)] leading-[1.02] tracking-tight">
+      </motion.p>
+
+      <motion.h1
+        {...rise(0.06)}
+        className="mt-2.5 font-display text-[clamp(2.25rem,8vw,3.75rem)] leading-[1.0] tracking-[-0.02em]"
+      >
         {house.address}
-      </h1>
+      </motion.h1>
 
       {/*
-        The most-asked question, answered before it's asked. A build produces
-        nothing visible most days, and an owner who can't tell "on track" from
-        "gone wrong" picks up the phone.
+        The question that generates most of his incoming calls, answered before
+        it's asked. Placed above everything else on purpose.
       */}
       {house.waiting_on && (
-        <div className="mt-7 border-l-[3px] border-accent-primary bg-surface/50 px-5 py-4">
+        <motion.div
+          {...rise(0.12)}
+          className="mt-8 border-l-[3px] border-accent-primary bg-surface/45 px-5 py-4"
+        >
           <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-accent-primary">
             Right now
           </p>
@@ -53,60 +80,43 @@ export default function HouseHeader({
               <span className="text-text/65">, expected {formatDay(house.waiting_on_eta)}</span>
             )}
           </p>
-        </div>
+        </motion.div>
       )}
 
-      <dl className="mt-8 grid grid-cols-1 gap-px border-y border-text/10 bg-text/10 sm:grid-cols-3">
-        <div className="bg-bg py-4 pr-4">
-          <dt className="font-mono text-[10px] uppercase tracking-[0.13em] text-text/45">
-            Underway
-          </dt>
-          <dd className="mt-1.5 leading-snug">
-            {active.length > 0
-              ? active.map((s) => s.name).join(", ")
-              : "Between stages"}
-          </dd>
-        </div>
-        <div className="bg-bg py-4 pr-4 sm:pl-4">
-          <dt className="font-mono text-[10px] uppercase tracking-[0.13em] text-text/45">
-            Next
-          </dt>
-          <dd className="mt-1.5 leading-snug">
-            {next ? next.name : "Finishing up"}
-            {next?.estimated_end && (
-              <span className="block text-sm text-text/55">
-                estimated {formatDay(next.estimated_end)}
-              </span>
-            )}
-          </dd>
-        </div>
-        <div className="bg-bg py-4 sm:pl-4">
-          <dt className="font-mono text-[10px] uppercase tracking-[0.13em] text-text/45">
-            Handover
-          </dt>
-          <dd className="mt-1.5 leading-snug">
-            {handover ?? "To be confirmed"}
-            {handover && <span className="block text-sm text-text/55">estimated</span>}
-          </dd>
-        </div>
-      </dl>
+      <motion.dl
+        {...rise(0.18)}
+        className="mt-9 grid grid-cols-1 gap-px border-y border-text/10 bg-text/10 sm:grid-cols-3"
+      >
+        {[
+          {
+            term: "Underway",
+            value: active.length > 0 ? active.map((s) => s.name).join(", ") : "Between stages",
+            note: null as string | null,
+          },
+          {
+            term: "Next",
+            value: next ? next.name : "Finishing up",
+            note: next?.estimated_end ? `estimated ${formatDay(next.estimated_end)}` : null,
+          },
+          {
+            term: "Handover",
+            value: handover ?? "To be confirmed",
+            note: handover ? "estimated" : null,
+          },
+        ].map((cell, i) => (
+          <div key={cell.term} className={"bg-bg py-4 pr-4" + (i > 0 ? " sm:pl-4" : "")}>
+            <dt className="font-mono text-[10px] uppercase tracking-[0.13em] text-text/45">
+              {cell.term}
+            </dt>
+            <dd className="mt-1.5 leading-snug">
+              {cell.value}
+              {cell.note && <span className="block text-sm text-text/55">{cell.note}</span>}
+            </dd>
+          </div>
+        ))}
+      </motion.dl>
 
-      <div className="mt-6">
-        <div className="mb-2 flex items-baseline justify-between font-mono text-[11px] uppercase tracking-[0.12em] text-text/50">
-          <span>Progress</span>
-          <span className="tabular-nums">{percent}% of {stageCount} stages</span>
-        </div>
-        <div
-          role="progressbar"
-          aria-valuenow={percent}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label="Build progress"
-          className="h-1.5 w-full overflow-hidden bg-text/10"
-        >
-          <div className="h-full bg-accent-primary" style={{ width: `${percent}%` }} />
-        </div>
-      </div>
+      <PhaseRail phases={toPhases(stages)} />
     </header>
   );
 }

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import {
   getHouse, getStages, getTimeline, getMyReports,
-  progressPercent, activeStages, nextStage,
+  activeStages, nextStage,
 } from "@/lib/db/owner";
 import { signDownload } from "@/lib/r2";
 import HouseHeader from "@/components/owner/HouseHeader";
@@ -35,13 +35,12 @@ export default async function HousePage({ params }: { params: { houseId: string 
   );
 
   return (
-    <main className="mx-auto max-w-3xl px-5 pb-24 pt-10">
+    <main className="mx-auto max-w-3xl px-5 pb-24 pt-12 sm:pt-16">
       <HouseHeader
         house={house}
-        percent={progressPercent(stages)}
+        stages={stages}
         active={activeStages(stages)}
         next={nextStage(stages)}
-        stageCount={stages.filter((s) => s.status !== "not_applicable").length}
       />
       <Timeline updates={withUrls} />
       <ReportPanel houseId={house.id} reports={reports} />
