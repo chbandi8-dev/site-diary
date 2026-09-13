@@ -44,7 +44,7 @@ begin
     -- Owner update system.
     'houses','owners','house_owners','stage_templates','house_stages',
     'stage_estimates','updates','internal_notes','photos','decisions',
-    'variations','documents','questions','notification_logs','inspections',
+    'variations','documents','owner_reports','notification_logs','inspections',
     'claim_milestones','handover_forecasts','defects','weather_days',
     'evidence_events'
   ] loop
@@ -110,7 +110,7 @@ grant execute on function public.owner_house_ids() to authenticated;
 grant select on
   public.houses, public.house_stages, public.stage_templates, public.updates,
   public.photos, public.decisions, public.variations, public.documents,
-  public.questions, public.inspections, public.claim_milestones,
+  public.owner_reports, public.inspections, public.claim_milestones,
   public.handover_forecasts, public.defects
 to authenticated;
 
@@ -148,12 +148,22 @@ create policy owner_reads_published_photos on public.photos
   using (
     status = 'ready'
     and deleted_at is null
-    and exists (
-      select 1 from public.updates u
-      where u.id = photos.update_id
-        and u.house_id in (select public.owner_house_ids())
-        and u.published_at is not null
-        and u.deleted_at is null
+    and (
+      -- His photos: visible once attached to a published update.
+      exists (
+        select 1 from public.updates u
+        where u.id = photos.update_id
+          and u.house_id in (select public.owner_house_ids())
+          and u.published_at is not null
+          and u.deleted_at is null
+      )
+      -- Their own photos: visible because they took them. Without this an
+      -- owner attaches a photo to a report and then cannot see it.
+      or exists (
+        select 1 from public.owner_reports r
+        where r.photo_id = photos.id
+          and r.owner_id = public.current_owner_id()
+      )
     )
   );
 
@@ -173,7 +183,9 @@ create policy owner_reads_own_documents on public.documents
   for select to authenticated
   using (house_id in (select public.owner_house_ids()));
 
-create policy owner_reads_own_questions on public.questions
+-- Both owners on a house see each other's reports and his replies. They are
+-- one household having one conversation, not two separate support tickets.
+create policy owner_reads_own_reports on public.owner_reports
   for select to authenticated
   using (house_id in (select public.owner_house_ids()));
 
@@ -266,8 +278,13 @@ begin
      'owner', v_owner::text, p_ip, p_user_agent);
 end $$;
 
-create or replace function public.ask_question(
-  p_house_id uuid, p_body text, p_photo_id uuid default null
+-- Owners raising something: a question during the build, an issue they think
+-- is wrong, or maintenance they notice in the defects period after handover.
+create or replace function public.submit_owner_report(
+  p_house_id uuid,
+  p_kind text,
+  p_body text,
+  p_photo_id uuid default null
 ) returns uuid language plpgsql security definer set search_path = public as $$
 declare v_owner uuid := public.current_owner_id(); v_id uuid := gen_random_uuid();
 begin
@@ -275,10 +292,25 @@ begin
   if p_house_id not in (select public.owner_house_ids()) then
     raise exception 'Not your house';
   end if;
-  if length(coalesce(p_body, '')) = 0 then raise exception 'Question is empty'; end if;
+  if length(coalesce(trim(p_body), '')) = 0 then
+    raise exception 'Please describe what you have noticed';
+  end if;
+  if p_kind not in ('question', 'issue', 'maintenance') then
+    raise exception 'Unknown report type';
+  end if;
 
-  insert into public.questions (id, house_id, owner_id, body, created_at)
-  values (v_id, p_house_id, v_owner, left(p_body, 4000), now());
+  -- A photo may only be attached if it belongs to this house, so a report
+  -- cannot be used to pull an id from someone else's build into view.
+  if p_photo_id is not null and not exists (
+    select 1 from public.photos ph
+    where ph.id = p_photo_id and ph.house_id = p_house_id
+  ) then
+    raise exception 'That photo is not from your build';
+  end if;
+
+  insert into public.owner_reports (id, house_id, owner_id, kind, body, photo_id, created_at)
+  values (v_id, p_house_id, v_owner, p_kind::public."OwnerReportKind",
+          left(p_body, 4000), p_photo_id, now());
   return v_id;
 end $$;
 
@@ -288,7 +320,7 @@ begin
   foreach f in array array[
     'answer_decision(uuid,text,text,text)',
     'decide_variation(uuid,boolean,text,text)',
-    'ask_question(uuid,text,uuid)'
+    'submit_owner_report(uuid,text,text,uuid)'
   ] loop
     execute format('revoke all on function public.%s from public, anon', f);
     execute format('grant execute on function public.%s to authenticated', f);

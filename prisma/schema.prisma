@@ -23,7 +23,7 @@ model User {
 
   updates       Update[]
   internalNotes InternalNote[]
-  answers       Question[]
+  ownerReplies  OwnerReport[]
 
   @@map("users")
 }
@@ -141,6 +141,10 @@ enum UpdateKind {
   milestone
   weather
   decision
+  /// A note he writes to this house's owners directly, rather than a report of
+  /// site progress. Same delivery as everything else — it lands on their
+  /// timeline and is emailed — but it reads as him talking, not as a log entry.
+  message
 }
 
 enum DecisionStatus {
@@ -211,6 +215,26 @@ enum PhotoOrigin {
   in_app
   camera_roll
   inbound
+  /// Uploaded by a homeowner alongside something they've reported.
+  owner
+}
+
+enum OwnerReportKind {
+  /// "Why is that wall there?" — usually answered by explaining, not fixing.
+  question
+  /// Something they think is wrong, during the build.
+  issue
+  /// Something that needs attention after handover, in the defects period.
+  maintenance
+}
+
+enum OwnerReportStatus {
+  submitted
+  acknowledged
+  in_progress
+  resolved
+  /// Looked at, nothing wrong. Still answered, never silently closed.
+  no_action_needed
 }
 
 enum PhotoStatus {
@@ -261,7 +285,7 @@ model House {
   decisions     Decision[]
   variations    Variation[]
   documents     Document[]
-  questions     Question[]
+  ownerReports  OwnerReport[]
   notifications NotificationLog[]
   inspections   Inspection[]
   claims        ClaimMilestone[]
@@ -288,7 +312,7 @@ model Owner {
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   houses        HouseOwner[]
-  questions     Question[]
+  ownerReports  OwnerReport[]
   variations    Variation[]
   notifications NotificationLog[]
 
@@ -499,9 +523,10 @@ model Photo {
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  house  House?      @relation(fields: [houseId], references: [id], onDelete: Cascade)
-  update Update?     @relation(fields: [updateId], references: [id], onDelete: SetNull)
-  stage  HouseStage? @relation(fields: [stageId], references: [id])
+  house   House?        @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  update  Update?       @relation(fields: [updateId], references: [id], onDelete: SetNull)
+  stage   HouseStage?   @relation(fields: [stageId], references: [id])
+  reports OwnerReport[]
 
   @@index([houseId, takenAt])
   @@index([updateId])
@@ -572,22 +597,53 @@ model Document {
   @@map("documents")
 }
 
-model Question {
-  id           String    @id @default(uuid()) @db.Uuid
-  houseId      String    @map("house_id") @db.Uuid
-  ownerId      String    @map("owner_id") @db.Uuid
-  body         String
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  answerBody   String?   @map("answer_body")
-  answeredAt   DateTime? @map("answered_at") @db.Timestamptz(3)
-  answeredById String?   @map("answered_by_id")
+/// Anything an owner raises: a question, something they think is wrong during
+/// the build, or maintenance they notice after handover.
+///
+/// A photo can be attached, and usually should be — an owner describing a
+/// problem in words is guesswork for both of them. It also answers the most
+/// common version of this: they screenshot a progress photo, circle something,
+/// and ask why a wall is in the wrong place. Anchoring the report to the exact
+/// photo they were looking at turns an accusation into a question.
+///
+/// Every report gets a reply. `no_action_needed` is a real outcome and still
+/// requires an explanation — an owner told "that's the waterproofing membrane,
+/// it gets covered next week" is reassured; one whose report silently closes is
+/// not.
+model OwnerReport {
+  id      String            @id @default(uuid()) @db.Uuid
+  houseId String            @map("house_id") @db.Uuid
+  ownerId String            @map("owner_id") @db.Uuid
+  kind    OwnerReportKind   @default(question)
+  status  OwnerReportStatus @default(submitted)
+  body    String
 
-  house      House @relation(fields: [houseId], references: [id], onDelete: Cascade)
-  owner      Owner @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  answeredBy User? @relation(fields: [answeredById], references: [id])
+  /// The photo they're asking about — either one they took, or one of his that
+  /// they tapped through from the timeline.
+  photoId String? @map("photo_id") @db.Uuid
+
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// Set automatically the moment he opens it. Owners mostly want to know the
+  /// message landed; "seen, looking into it" buys a lot of patience.
+  acknowledgedAt DateTime? @map("acknowledged_at") @db.Timestamptz(3)
+
+  replyBody   String?   @map("reply_body")
+  repliedAt   DateTime? @map("replied_at") @db.Timestamptz(3)
+  repliedById String?   @map("replied_by_id")
+  resolvedAt  DateTime? @map("resolved_at") @db.Timestamptz(3)
+
+  /// Set when a report turns out to be a real defect and joins the punch list.
+  defectId String? @map("defect_id") @db.Uuid
+
+  house     House   @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  owner     Owner   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  photo     Photo?  @relation(fields: [photoId], references: [id], onDelete: SetNull)
+  defect    Defect? @relation(fields: [defectId], references: [id], onDelete: SetNull)
+  repliedBy User?   @relation(fields: [repliedById], references: [id])
 
   @@index([houseId, createdAt])
-  @@map("questions")
+  @@index([status, createdAt])
+  @@map("owner_reports")
 }
 
 /// Delivery log. `dedupeKey` is what stops a retried job sending the same
@@ -703,7 +759,8 @@ model Defect {
   resolvedAt    DateTime?    @map("resolved_at") @db.Timestamptz(3)
   updatedAt     DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  house   House         @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  reports OwnerReport[]
 
   @@index([houseId, status])
   @@map("defects")

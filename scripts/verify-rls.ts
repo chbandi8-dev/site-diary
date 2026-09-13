@@ -37,6 +37,7 @@ const INTENTIONALLY_UNREACHABLE = new Set([
   "evidence_events",
   "weather_days",
   "stage_estimates",
+  "owner_report_drafts",
   "_prisma_migrations",
 ]);
 
