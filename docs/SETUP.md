@@ -37,6 +37,13 @@ Supabase Auth is not used at all — owners hold a house link rather than an
 account — so there is no auth SMTP to configure. Resend only sends update
 emails and the weekly digest.
 
+## 2b. The public URL — required
+
+Set `NEXT_PUBLIC_SITE_URL` to the site's real address (e.g.
+`https://yourbuilder.com.au`). Every owner link he pastes into WhatsApp and
+every link inside every email is built from it. It deliberately throws at
+startup if unset, rather than quietly sending owners to `localhost`.
+
 ## 3. Supabase
 
 1. Create a project. Region: Sydney.
@@ -157,3 +164,82 @@ Both reviewers flagged these as untestable from a desk:
 - **A link in a private window.** Open a house link where no admin session
   exists, to confirm the owner view really is reachable by the link alone and
   really does show only that house.
+
+
+---
+
+# Testing it
+
+Fifteen minutes end to end, once the setup above is done.
+
+## 1. Load the example houses
+
+```bash
+npm run db:seed:demo
+```
+
+Four invented houses at different points — one at roof stage with an unanswered
+question, one waiting nine days on a certifier, one mid-defects after handover.
+It prints an owner link for each. Everything uses a reserved invalid email
+domain and `npm run db:seed:demo:clear` removes it all.
+
+## 2. His side
+
+Sign in at `/admin/login` with `admin@site.com` and the `ADMIN_PASSWORD` you set.
+
+- **Houses** — the run sheet. Anything quiet five days or carrying an
+  unanswered question floats to the top, with a day counter.
+- **Open 14 Wattle Grove**:
+  - *Owners currently see* — tap **Change**, pick something he's waiting on and
+    a date. Move the handover months and watch it demand a reason.
+  - *Where it's up to* — tap a stage to move it: booked → underway → done.
+    More than one can be underway, which is the point.
+  - *Add photos*, then tap a message button. **Check the preview** — that is
+    exactly what the owner will read. Send it, and use **Undo** within the
+    twelve seconds.
+  - Try a **Held up** button. It saves as a draft and does not send. Find it
+    under *Recently* and use **Send now** or **Edit first**.
+- **From owners** — the unanswered question. Open it, reply, pick an outcome.
+
+## 3. Their side
+
+**Use a private window.** In your normal browser you are signed in as staff,
+which proves nothing.
+
+On the house page tap **Create link**, then **Send on WhatsApp** or **Copy**.
+Paste the link into a private window.
+
+- The house appears immediately. No sign-in, no code.
+- Under the header, the registration card. Add a name and email — that is what
+  turns on notifications.
+- Scroll the timeline, tap a photo, swipe between them.
+- Raise a question with a photo attached. Then go back to **From owners** in the
+  admin and confirm the photo is visible to him.
+- Close the window, reopen the bare address. You are still in — that is the
+  cookie doing its job.
+- Back in the admin, **Replace link**. The old link should now land on
+  "This link isn't working".
+
+## 4. Email
+
+Emails queue rather than send immediately. To drain the queue now:
+
+```bash
+curl -X POST https://your-site/api/cron/notifications \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+Same for `/api/cron/digest`. In production Vercel Cron runs both on the schedule
+in `vercel.json`.
+
+## 5. On his actual phone
+
+The three things that cannot be tested from a desk:
+
+- **Portrait photos are not sideways.** Canvas re-encoding drops the EXIF
+  orientation tag; the library is supposed to apply it first. Verify, don't
+  assume.
+- **His camera format.** Settings → Camera → Formats. "High Efficiency" gives
+  HEIC, which Safari reads and Chrome/Android do not. "Most Compatible" avoids
+  a whole class of problem.
+- **The screen in the sun**, one-handed, with the phone in its case.
