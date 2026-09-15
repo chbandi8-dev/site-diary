@@ -60,6 +60,24 @@ jobs:
           #
           # The token is interpolated into the URL rather than echoed; Actions
           # masks registered secrets in logs, and nothing here prints it.
+          # The workflow files are not mirrored, and this is deliberate rather
+          # than a workaround. GitHub refuses a push that touches
+          # .github/workflows unless the token also carries workflow scope —
+          # and a token that can rewrite CI in another repository is a much
+          # bigger thing to hand out than one that can only write code. The
+          # deployment repository never runs these workflows anyway; it exists
+          # to be built by Vercel.
+          #
+          # Dropped as a commit on top rather than by rewriting history, since
+          # the push is forced and the destination is replaced wholesale each
+          # time regardless.
+          if [ -d .github/workflows ]; then
+            git config user.name "Mirror"
+            git config user.email "actions@github.com"
+            git rm -r --quiet .github/workflows
+            git commit --quiet -m "Mirror: workflows are not copied to the deployment repo"
+          fi
+
           # Captured rather than streamed, so a 403 can be turned into an
           # explanation instead of leaving someone to interpret git's wording.
           # Git prints the URL without the credentials, so this is safe to show.
@@ -78,6 +96,8 @@ jobs:
             echo "::error::The token works, but it is not allowed to write to chbandi8-dev/site-diary. Whoever it names above is the account it authenticated as. If that is the right account, the token is missing its write permission: a classic token needs the 'repo' scope ticked, a fine-grained one needs site-diary selected under repository access AND Contents: Read and write. Create a new token with that and replace the MIRROR_TOKEN secret."
           elif grep -qi "could not read\|Authentication failed\|Invalid username" push.log; then
             echo "::error::The token was rejected outright — it has probably expired or was copied incompletely. Create a new one and replace the MIRROR_TOKEN secret."
+          elif grep -qi "without .workflow. scope" push.log; then
+            echo "::error::The push was refused because it touches .github/workflows. That should not happen — the workflow directory is removed before pushing. If a workflow file has been added somewhere the removal misses, either extend that step or grant the token Workflows: Read and write."
           elif grep -qi "not found" push.log; then
             echo "::error::chbandi8-dev/site-diary could not be found. Either the name is wrong, or the token cannot see it — a fine-grained token shows a private repository as missing rather than forbidden when it has not been granted access to it."
           fi
