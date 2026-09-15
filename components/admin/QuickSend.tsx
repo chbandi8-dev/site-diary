@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, Check, ImagePlus, Loader2, RotateCw, X } from "lucide-react";
 import { uploadPhoto } from "@/lib/capture/photo";
+import VoiceNote from "./VoiceNote";
 
 type Slot = { name: string; label: string; options: string[] };
 type Template = {
@@ -46,6 +47,8 @@ export default function QuickSend({ houseId }: { houseId: string }) {
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [undo, setUndo] = useState<{ id: string; until: number } | null>(null);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [draftKind, setDraftKind] = useState<"progress" | "delay" | "milestone">("progress");
 
   useEffect(() => {
     fetch(`/api/pm/quick-send?houseId=${houseId}`)
@@ -135,6 +138,38 @@ export default function QuickSend({ houseId }: { houseId: string }) {
     }
   }
 
+  /** Sends an update he wrote or dictated, rather than one from a template. */
+  async function sendDraft(hold: boolean) {
+    if (!draft?.trim()) return;
+    setSending(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/pm/updates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          houseId,
+          body: draft,
+          kind: draftKind,
+          hold,
+          photoIds: photos.filter((p) => p.state === "ready").map((p) => p.id),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "That didn't send.");
+
+      setResult({ ok: true, text: data.message });
+      if (data.published) setUndo({ id: data.id, until: Date.now() + 12_000 });
+      setDraft(null);
+      setPhotos([]);
+      router.refresh();
+    } catch (cause) {
+      setResult({ ok: false, text: cause instanceof Error ? cause.message : "That didn't send." });
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function undoSend() {
     if (!undo) return;
     await fetch(`/api/pm/updates/${undo.id}`, { method: "DELETE" });
@@ -170,6 +205,97 @@ export default function QuickSend({ houseId }: { houseId: string }) {
       )}
 
       {/* Photos first: he shoots, then says what happened. */}
+      <div className="mb-5">
+        <VoiceNote houseId={houseId} onDraft={(body) => { setDraft(body); setResult(null); }} />
+      </div>
+
+      {draft !== null && (
+        <div className="mb-6 rounded-lg border border-gold/40 bg-dark-card p-5">
+          <div className="mb-2.5 flex items-center justify-between gap-3">
+            <p className="font-mono text-[10px] uppercase tracking-[0.13em] text-gold">
+              What they&apos;ll read — edit anything
+            </p>
+            <button
+              type="button"
+              onClick={() => setDraft(null)}
+              className="text-sm text-white/45 hover:text-white"
+            >
+              Discard
+            </button>
+          </div>
+
+          <label htmlFor="draft-body" className="sr-only">
+            The update
+          </label>
+          <textarea
+            id="draft-body"
+            rows={4}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            className="w-full rounded-lg border border-white/10 bg-dark px-4 py-3 leading-relaxed text-white focus:border-gold focus:outline-none"
+          />
+
+          <fieldset className="mt-4">
+            <legend className="mb-2 font-mono text-[11px] uppercase tracking-[0.12em] text-white/45">
+              What kind of news is it
+            </legend>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { v: "progress", l: "Just progress" },
+                { v: "milestone", l: "A milestone" },
+                { v: "delay", l: "A delay" },
+              ].map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  onClick={() => setDraftKind(o.v as typeof draftKind)}
+                  className={
+                    "min-h-[42px] rounded-full border px-4 text-sm " +
+                    (draftKind === o.v
+                      ? "border-gold bg-gold/20 text-gold"
+                      : "border-white/15 text-white/70")
+                  }
+                >
+                  {o.l}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          {/* A delay is a phone call first, whoever wrote the words. */}
+          {draftKind === "delay" && (
+            <p className="mt-3 text-xs leading-relaxed text-gold">
+              Delays save as a draft. Ring them first, then send it from Recently below.
+            </p>
+          )}
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => sendDraft(false)}
+              disabled={sending || !draft.trim()}
+              className="min-h-[50px] rounded-lg bg-gold px-6 font-medium text-dark disabled:opacity-40"
+            >
+              {sending
+                ? "Sending…"
+                : draftKind === "delay"
+                  ? "Save as draft"
+                  : "Send to owners"}
+            </button>
+            {draftKind !== "delay" && (
+              <button
+                type="button"
+                onClick={() => sendDraft(true)}
+                disabled={sending}
+                className="min-h-[50px] rounded-lg border border-white/15 px-5 text-white/70 hover:border-white/35"
+              >
+                Hold it for now
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/*
         Two buttons, not one. `capture` forces the camera and removes the
         camera-roll option entirely on iOS — but he shoots with the native

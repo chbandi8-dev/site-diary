@@ -20,6 +20,7 @@
     "check:setup": "ts-node --project tsconfig.scripts.json scripts/check-setup.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.125.0",
     "@aws-sdk/client-s3": "^3.1131.0",
     "@aws-sdk/s3-request-presigner": "^3.1131.0",
     "@hookform/resolvers": "^3.9.0",
