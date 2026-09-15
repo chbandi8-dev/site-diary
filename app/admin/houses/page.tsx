@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth-guard";
 import { AlertCircle, Clock } from "lucide-react";
+import AddHouse from "@/components/admin/AddHouse";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,13 @@ const DAYS_QUIET_BEFORE_FLAG = 5;
  */
 export default async function HousesPage() {
   await requireStaff();
+  const stageNames = (
+    await prisma.stageTemplate.findMany({
+      select: { name: true },
+      orderBy: { position: "asc" },
+    })
+  ).map((t) => t.name);
+
   const houses = await prisma.house.findMany({
     where: { status: { not: "handed_over" } },
     select: {
@@ -61,11 +69,14 @@ export default async function HousesPage() {
 
   return (
     <div>
-      <header className="mb-8">
-        <h1 className="font-display text-3xl text-white">Houses</h1>
-        <p className="mt-1 text-white/50">
-          {withState.filter((h) => h.needsAttention).length} need something · {withState.length} active
-        </p>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-3xl text-white">Houses</h1>
+          <p className="mt-1 text-white/50">
+            {withState.filter((h) => h.needsAttention).length} need something · {withState.length} active
+          </p>
+        </div>
+        <AddHouse stageNames={stageNames} />
       </header>
 
       <ul className="flex flex-col gap-2">
