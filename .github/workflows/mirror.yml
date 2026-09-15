@@ -34,6 +34,13 @@ jobs:
         with:
           # A shallow clone cannot be pushed to another repository.
           fetch-depth: 0
+          # Without this, checkout leaves an http.<host>.extraheader credential
+          # for the default GITHUB_TOKEN in the local git config — and that
+          # header takes precedence over any credentials in a push URL. The
+          # mirror push then authenticates as github-actions[bot], which has no
+          # access to the other repository, and is refused with a 403 that
+          # looks like the token is wrong when it is not.
+          persist-credentials: false
 
       - name: Push to chbandi8-dev/site-diary
         env:
