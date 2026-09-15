@@ -60,8 +60,26 @@ jobs:
           #
           # The token is interpolated into the URL rather than echoed; Actions
           # masks registered secrets in logs, and nothing here prints it.
-          git push --force \
+          # Captured rather than streamed, so a 403 can be turned into an
+          # explanation instead of leaving someone to interpret git's wording.
+          # Git prints the URL without the credentials, so this is safe to show.
+          if git push --force \
             "https://x-access-token:${MIRROR_TOKEN}@github.com/chbandi8-dev/site-diary.git" \
-            HEAD:refs/heads/main
+            HEAD:refs/heads/main 2>push.log
+          then
+            rm -f push.log
+            echo "Mirrored $(git rev-parse --short HEAD) to chbandi8-dev/site-diary main."
+            exit 0
+          fi
 
-          echo "Mirrored $(git rev-parse --short HEAD) to chbandi8-dev/site-diary main."
+          cat push.log
+
+          if grep -qi "denied to" push.log; then
+            echo "::error::The token works, but it is not allowed to write to chbandi8-dev/site-diary. Whoever it names above is the account it authenticated as. If that is the right account, the token is missing its write permission: a classic token needs the 'repo' scope ticked, a fine-grained one needs site-diary selected under repository access AND Contents: Read and write. Create a new token with that and replace the MIRROR_TOKEN secret."
+          elif grep -qi "could not read\|Authentication failed\|Invalid username" push.log; then
+            echo "::error::The token was rejected outright — it has probably expired or was copied incompletely. Create a new one and replace the MIRROR_TOKEN secret."
+          elif grep -qi "not found" push.log; then
+            echo "::error::chbandi8-dev/site-diary could not be found. Either the name is wrong, or the token cannot see it — a fine-grained token shows a private repository as missing rather than forbidden when it has not been granted access to it."
+          fi
+
+          exit 1
