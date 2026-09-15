@@ -1,122 +1,344 @@
-export const dynamic = "force-dynamic";
-
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth-guard";
-import Link from "next/link";
-import { FolderOpen, Wrench, MessageSquare, Star, Plus, ArrowRight, TrendingUp } from "lucide-react";
-import { formatDate } from "@/lib/utils";
+import { money } from "@/lib/money";
+import {
+  HardHat, Inbox, Clock, FileSignature, CloudRain, CalendarCheck,
+  ArrowRight, Check, CircleAlert, PencilLine,
+} from "lucide-react";
 
-export default async function AdminDashboard() {
+export const dynamic = "force-dynamic";
+
+/**
+ * What needs him today.
+ *
+ * This screen replaced a marketing dashboard that counted projects and
+ * testimonials — numbers nobody acts on, on the first page he sees every
+ * morning. A builder running twenty-five houses opens this to answer one
+ * question: who is about to ring me, and why.
+ *
+ * So everything here is either something he must do, or something an owner
+ * owes him. Counts that imply no action have no place on it.
+ */
+
+const DAYS_QUIET_BEFORE_FLAG = 5;
+
+type Task = {
+  houseId: string;
+  address: string;
+  urgency: number;
+  label: string;
+  detail: string;
+  icon: typeof Inbox;
+};
+
+export default async function Today() {
   await requireStaff();
-  const [projectCount, serviceCount, unreadMessages, testimonialCount, recentMessages] = await Promise.all([
-    prisma.project.count(),
-    prisma.service.count(),
-    prisma.message.count({ where: { read: false } }),
-    prisma.testimonial.count(),
-    prisma.message.findMany({ orderBy: { createdAt: "desc" }, take: 5 }),
+
+  const weekAgo = new Date(Date.now() - 7 * 86_400_000);
+
+  const houses = await prisma.house.findMany({
+    where: { status: { not: "handed_over" } },
+    select: {
+      id: true,
+      address: true,
+      suburb: true,
+      waitingOn: true,
+      nextWeek: true,
+      nextWeekSetAt: true,
+      stages: {
+        where: { status: "in_progress" },
+        select: { name: true },
+        orderBy: { position: "asc" },
+      },
+      updates: {
+        where: { publishedAt: { not: null }, deletedAt: null },
+        select: { occurredAt: true },
+        orderBy: { occurredAt: "desc" },
+        take: 1,
+      },
+      decisions: {
+        where: { status: "open" },
+        select: { id: true, question: true, dueDate: true },
+      },
+      variations: {
+        where: { status: "sent" },
+        select: { id: true, reference: true, amountCents: true },
+      },
+      ownerReports: {
+        where: { status: { in: ["submitted", "acknowledged"] } },
+        select: { id: true, body: true, owner: { select: { name: true } } },
+      },
+      weatherDays: {
+        where: { workLost: true, date: { gte: weekAgo } },
+        select: { id: true },
+      },
+      _count: {
+        select: {
+          updates: { where: { publishedAt: null, deletedAt: null } },
+          owners: { where: { revokedAt: null } },
+        },
+      },
+    },
+    orderBy: { address: "asc" },
+  });
+
+  const now = Date.now();
+  const updatesThisWeek = await prisma.update.count({
+    where: { publishedAt: { gte: weekAgo }, deletedAt: null },
+  });
+
+  // Everything that wants him. Built per house, then flattened and sorted, so
+  // the list reads as a to-do rather than a directory he has to scan.
+  const tasks: Task[] = [];
+
+  for (const h of houses) {
+    for (const r of h.ownerReports) {
+      tasks.push({
+        houseId: h.id,
+        address: h.address,
+        urgency: 1,
+        label: `${r.owner.name} is waiting on an answer`,
+        detail: r.body.length > 90 ? `${r.body.slice(0, 90)}…` : r.body,
+        icon: Inbox,
+      });
+    }
+
+    for (const d of h.decisions) {
+      const overdue = d.dueDate && d.dueDate.getTime() < now;
+      if (!overdue) continue;
+      tasks.push({
+        houseId: h.id,
+        address: h.address,
+        urgency: 2,
+        label: "A decision is overdue",
+        detail: `${d.question} — chase them`,
+        icon: CircleAlert,
+      });
+    }
+
+    if (h._count.updates > 0) {
+      tasks.push({
+        houseId: h.id,
+        address: h.address,
+        urgency: 3,
+        label: `${h._count.updates} update${h._count.updates === 1 ? "" : "s"} never sent`,
+        detail: "Written but still sitting as a draft",
+        icon: PencilLine,
+      });
+    }
+
+    const last = h.updates[0]?.occurredAt;
+    const daysQuiet = last ? Math.floor((now - last.getTime()) / 86_400_000) : null;
+    if (daysQuiet === null || daysQuiet >= DAYS_QUIET_BEFORE_FLAG) {
+      tasks.push({
+        houseId: h.id,
+        address: h.address,
+        urgency: 4,
+        label: daysQuiet === null ? "Never updated" : `Quiet for ${daysQuiet} days`,
+        detail:
+          h._count.owners > 0
+            ? "The owners have heard nothing"
+            : "No owners registered on this house yet",
+        icon: Clock,
+      });
+    }
+  }
+
+  tasks.sort((a, b) => a.urgency - b.urgency || a.address.localeCompare(b.address));
+
+  // Things owners owe him. Separate from his own list on purpose: mixing them
+  // makes his to-do look longer than it is, and these need a nudge, not work.
+  const waitingOnOwners = houses.flatMap((h) => [
+    ...h.decisions
+      .filter((d) => !d.dueDate || d.dueDate.getTime() >= now)
+      .map((d) => ({
+        houseId: h.id,
+        address: h.address,
+        what: d.question,
+        note: d.dueDate
+          ? `due ${d.dueDate.toLocaleDateString("en-AU", { day: "numeric", month: "short" })}`
+          : "no date set",
+      })),
+    ...h.variations.map((v) => ({
+      houseId: h.id,
+      address: h.address,
+      what: `${v.reference} — ${money(v.amountCents)}`,
+      note: "not approved yet",
+    })),
   ]);
 
-  const stats = [
-    { label: "Projects", value: projectCount, icon: FolderOpen, href: "/admin/projects", color: "text-blue-400", bg: "bg-blue-400/10 border-blue-400/20" },
-    { label: "Services", value: serviceCount, icon: Wrench, href: "/admin/services", color: "text-purple-400", bg: "bg-purple-400/10 border-purple-400/20" },
-    { label: "Unread Messages", value: unreadMessages, icon: MessageSquare, href: "/admin/messages", color: "text-gold", bg: "bg-gold/10 border-gold/20" },
-    { label: "Testimonials", value: testimonialCount, icon: Star, href: "/admin/testimonials", color: "text-emerald-400", bg: "bg-emerald-400/10 border-emerald-400/20" },
-  ];
+  const wetThisWeek = houses.reduce((n, h) => n + h.weatherDays.length, 0);
+  const lookAheadCutoff = now - 10 * 86_400_000;
+  const nextWeekWritten = houses.filter(
+    (h) => h.nextWeek && h.nextWeekSetAt && h.nextWeekSetAt.getTime() >= lookAheadCutoff
+  ).length;
 
-  const quickActions = [
-    { label: "Add Project", href: "/admin/projects/new", icon: Plus },
-    { label: "Edit Homepage", href: "/admin/content", icon: TrendingUp },
-    { label: "View Messages", href: "/admin/messages", icon: MessageSquare },
+  const needsHim = new Set(tasks.map((t) => t.houseId)).size;
+
+  const tiles = [
+    { label: "Active houses", value: houses.length, icon: HardHat, href: "/admin/houses", tone: "plain" },
+    { label: "Need you", value: needsHim, icon: CircleAlert, href: "/admin/houses", tone: needsHim > 0 ? "alert" : "plain" },
+    { label: "Owner questions", value: houses.reduce((n, h) => n + h.ownerReports.length, 0), icon: Inbox, href: "/admin/reports", tone: "plain" },
+    { label: "Waiting on owners", value: waitingOnOwners.length, icon: FileSignature, href: "/admin/houses", tone: "plain" },
   ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
-      {/* Welcome */}
-      <div>
-        <h2 className="font-display font-bold text-2xl text-white mb-1">Dashboard</h2>
-        <p className="text-white/40 text-sm">Overview of your website content</p>
-      </div>
+    <div className="mx-auto max-w-5xl">
+      <header className="mb-8">
+        <h1 className="font-display text-3xl text-white">Today</h1>
+        <p className="mt-1 text-white/45">
+          {tasks.length === 0
+            ? "Nothing outstanding. Every house is up to date."
+            : `${tasks.length} thing${tasks.length === 1 ? "" : "s"} want you, across ${needsHim} house${needsHim === 1 ? "" : "s"}.`}
+        </p>
+      </header>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map(({ label, value, icon: Icon, href, color, bg }) => (
+      <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {tiles.map(({ label, value, icon: Icon, href, tone }) => (
           <Link
             key={label}
             href={href}
-            className="bg-dark-lighter border border-white/5 hover:border-white/10 rounded-sm p-5 transition-all group"
+            className={
+              "group rounded-lg border p-5 transition-colors " +
+              (tone === "alert" && value > 0
+                ? "border-gold/25 bg-gold/[0.06] hover:border-gold/50"
+                : "border-white/5 bg-dark-card hover:border-white/15")
+            }
           >
-            <div className={`w-10 h-10 rounded-sm border flex items-center justify-center mb-4 ${bg}`}>
-              <Icon size={18} className={color} />
-            </div>
-            <div className={`text-3xl font-display font-bold mb-1 ${color}`}>{value}</div>
-            <div className="text-white/40 text-xs flex items-center gap-1 group-hover:text-white/60 transition-colors">
+            <Icon
+              size={16}
+              aria-hidden="true"
+              className={tone === "alert" && value > 0 ? "text-gold" : "text-white/30"}
+            />
+            <p
+              className={
+                "mt-3 font-display text-3xl " +
+                (tone === "alert" && value > 0 ? "text-gold" : "text-white")
+              }
+            >
+              {value}
+            </p>
+            <p className="mt-0.5 flex items-center gap-1 text-xs text-white/40 group-hover:text-white/60">
               {label}
-              <ArrowRight size={11} className="group-hover:translate-x-0.5 transition-transform" />
-            </div>
+              <ArrowRight size={11} className="transition-transform group-hover:translate-x-0.5" />
+            </p>
           </Link>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Messages */}
-        <div className="lg:col-span-2 bg-dark-lighter border border-white/5 rounded-sm p-6">
-          <div className="flex items-center justify-between mb-5">
-            <h3 className="text-white font-semibold">Recent Messages</h3>
-            <Link href="/admin/messages" className="text-gold text-xs hover:underline">View all</Link>
-          </div>
-          {recentMessages.length > 0 ? (
-            <div className="space-y-3">
-              {recentMessages.map((msg) => (
-                <div key={msg.id} className="flex items-start gap-3 p-3 bg-dark rounded-sm border border-white/5">
-                  <div className="w-8 h-8 bg-gold/10 border border-gold/20 rounded-sm flex items-center justify-center flex-shrink-0">
-                    <span className="text-gold text-xs font-bold">{msg.name.charAt(0)}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-white text-sm font-medium">{msg.name}</span>
-                      {!msg.read && <span className="w-1.5 h-1.5 rounded-full bg-gold flex-shrink-0" />}
-                    </div>
-                    <p className="text-white/40 text-xs truncate">{msg.message}</p>
-                    <p className="text-white/20 text-xs mt-0.5">{formatDate(msg.createdAt)}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-white/30 text-sm text-center py-8">No messages yet</p>
-          )}
-        </div>
+      <section className="mb-10">
+        <h2 className="mb-3 font-mono text-[11px] uppercase tracking-[0.13em] text-white/40">
+          Needs you
+        </h2>
 
-        {/* Quick Actions */}
-        <div className="bg-dark-lighter border border-white/5 rounded-sm p-6">
-          <h3 className="text-white font-semibold mb-5">Quick Actions</h3>
-          <div className="space-y-3">
-            {quickActions.map(({ label, href, icon: Icon }) => (
-              <Link
-                key={label}
-                href={href}
-                className="flex items-center gap-3 p-3 bg-dark rounded-sm border border-white/5 hover:border-gold/20 text-white/60 hover:text-white transition-all group"
-              >
-                <div className="w-8 h-8 bg-gold/5 border border-gold/10 group-hover:bg-gold/10 group-hover:border-gold/20 rounded-sm flex items-center justify-center transition-all">
-                  <Icon size={15} className="text-gold" />
-                </div>
-                <span className="text-sm">{label}</span>
-                <ArrowRight size={14} className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
-              </Link>
+        {tasks.length > 0 ? (
+          <ul className="flex flex-col">
+            {tasks.map((t, i) => (
+              <li key={`${t.houseId}-${i}`}>
+                <Link
+                  href={`/admin/houses/${t.houseId}`}
+                  className="group flex items-start gap-3 border-t border-white/5 py-3.5 transition-colors hover:bg-white/[0.02]"
+                >
+                  <t.icon
+                    size={15}
+                    aria-hidden="true"
+                    className={
+                      "mt-0.5 flex-none " + (t.urgency <= 2 ? "text-gold" : "text-white/30")
+                    }
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-white/85">
+                      {t.label}
+                      <span className="text-white/35"> · {t.address}</span>
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-white/40">{t.detail}</p>
+                  </div>
+                  <ArrowRight
+                    size={14}
+                    aria-hidden="true"
+                    className="mt-0.5 flex-none text-white/0 transition-colors group-hover:text-white/40"
+                  />
+                </Link>
+              </li>
             ))}
-          </div>
+          </ul>
+        ) : (
+          <p className="flex items-center gap-2 rounded-lg border border-white/5 bg-dark-card px-5 py-4 text-sm text-white/45">
+            <Check size={14} aria-hidden="true" className="text-gold" />
+            Nothing outstanding. Every owner has heard from you recently.
+          </p>
+        )}
+      </section>
 
-          <div className="mt-6 pt-4 border-t border-white/5">
-            <p className="text-white/20 text-xs mb-2">Site Preview</p>
+      <div className="grid gap-10 lg:grid-cols-2">
+        <section>
+          <h2 className="mb-3 font-mono text-[11px] uppercase tracking-[0.13em] text-white/40">
+            Waiting on owners
+          </h2>
+          {waitingOnOwners.length > 0 ? (
+            <ul className="flex flex-col">
+              {waitingOnOwners.map((w, i) => (
+                <li key={`${w.houseId}-${i}`}>
+                  <Link
+                    href={`/admin/houses/${w.houseId}`}
+                    className="block border-t border-white/5 py-3 transition-colors hover:bg-white/[0.02]"
+                  >
+                    <p className="truncate text-sm text-white/80">{w.what}</p>
+                    <p className="mt-0.5 text-xs text-white/40">
+                      {w.address} · {w.note}
+                    </p>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="rounded-lg border border-white/5 bg-dark-card px-5 py-4 text-sm text-white/45">
+              Nothing outstanding from any owner.
+            </p>
+          )}
+        </section>
+
+        <section>
+          <h2 className="mb-3 font-mono text-[11px] uppercase tracking-[0.13em] text-white/40">
+            This week
+          </h2>
+          <dl className="flex flex-col">
+            <div className="flex items-baseline justify-between border-t border-white/5 py-3">
+              <dt className="text-sm text-white/60">Updates sent</dt>
+              <dd className="font-display text-xl text-white">{updatesThisWeek}</dd>
+            </div>
+            <div className="flex items-baseline justify-between border-t border-white/5 py-3">
+              <dt className="flex items-center gap-2 text-sm text-white/60">
+                <CloudRain size={13} aria-hidden="true" className="text-white/30" />
+                Days lost to weather
+              </dt>
+              <dd className="font-display text-xl text-white">{wetThisWeek}</dd>
+            </div>
             <Link
-              href="/"
-              target="_blank"
-              className="block text-center border border-white/10 hover:border-gold/30 text-white/50 hover:text-gold py-2 rounded-sm text-xs transition-all"
+              href="/admin/friday"
+              className="group flex items-baseline justify-between border-t border-white/5 py-3 transition-colors hover:bg-white/[0.02]"
             >
-              Open Website ↗
+              <span className="flex items-center gap-2 text-sm text-white/60">
+                <CalendarCheck size={13} aria-hidden="true" className="text-white/30" />
+                Next week written
+              </span>
+              <span
+                className={
+                  "font-display text-xl " +
+                  (nextWeekWritten === houses.length ? "text-gold" : "text-white")
+                }
+              >
+                {nextWeekWritten}
+                <span className="text-sm text-white/35"> / {houses.length}</span>
+              </span>
             </Link>
-          </div>
-        </div>
+          </dl>
+          <p className="mt-3 text-xs leading-relaxed text-white/30">
+            The Friday email goes out either way. The look-ahead is the part owners
+            can&apos;t see for themselves.
+          </p>
+        </section>
       </div>
     </div>
   );

@@ -36,7 +36,7 @@ export default function AdminHeader({ onMenuClick, title = "Dashboard", unreadCo
         </Link>
 
         {unreadCount > 0 && (
-          <Link href="/admin/messages" className="relative text-white/40 hover:text-gold transition-colors">
+          <Link href="/admin/website/messages" className="relative text-white/40 hover:text-gold transition-colors">
             <Bell size={18} />
             <span className="absolute -top-1 -right-1 w-4 h-4 bg-gold text-dark text-[10px] font-bold rounded-full flex items-center justify-center">
               {unreadCount > 9 ? "9+" : unreadCount}

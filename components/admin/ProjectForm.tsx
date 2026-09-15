@@ -73,7 +73,7 @@ export default function ProjectForm({ project }: ProjectFormProps) {
 
       if (!res.ok) throw new Error("Save failed");
       toast.success(project ? "Project updated" : "Project created");
-      router.push("/admin/projects");
+      router.push("/admin/website/projects");
     } catch {
       toast.error("Failed to save project");
     } finally {

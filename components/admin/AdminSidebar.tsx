@@ -4,25 +4,27 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
-  LayoutDashboard, FolderOpen, Wrench, FileText,
-  MessageSquare, Star, Settings, LogOut, ChevronRight, X,
-  HardHat, Inbox, CalendarCheck,
+  LayoutDashboard, LogOut, ChevronRight, X,
+  HardHat, Inbox, CalendarCheck, Globe,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const navItems = [
-  { href: "/admin", icon: LayoutDashboard, label: "Dashboard", exact: true },
-  // The owner update system. Placed above the marketing CMS because this is
-  // the part he opens every day.
+/**
+ * Two groups, not one list.
+ *
+ * Running the builds and editing the marketing website are different jobs on
+ * different days, and mixing them buried the houses among testimonials. The
+ * whole marketing CMS is now one entry with its own screen behind it: still one
+ * click away, no longer competing for attention with the work he opens daily.
+ */
+const siteDiary = [
+  { href: "/admin", icon: LayoutDashboard, label: "Today", exact: true },
   { href: "/admin/houses", icon: HardHat, label: "Houses" },
   { href: "/admin/reports", icon: Inbox, label: "From owners" },
   { href: "/admin/friday", icon: CalendarCheck, label: "Friday email" },
-  { href: "/admin/projects", icon: FolderOpen, label: "Projects" },
-  { href: "/admin/services", icon: Wrench, label: "Services" },
-  { href: "/admin/content", icon: FileText, label: "Site Content" },
-  { href: "/admin/testimonials", icon: Star, label: "Testimonials" },
-  { href: "/admin/messages", icon: MessageSquare, label: "Messages" },
 ];
+
+const website = [{ href: "/admin/website", icon: Globe, label: "Website" }];
 
 interface AdminSidebarProps {
   isOpen?: boolean;
@@ -35,6 +37,41 @@ export default function AdminSidebar({ isOpen = true, onClose, unreadCount = 0 }
 
   const isActive = (href: string, exact?: boolean) =>
     exact ? pathname === href : pathname.startsWith(href);
+
+  const renderItem = ({
+    href,
+    icon: Icon,
+    label,
+    exact,
+  }: {
+    href: string;
+    icon: typeof LayoutDashboard;
+    label: string;
+    exact?: boolean;
+  }) => {
+    const active = isActive(href, exact);
+    return (
+      <Link
+        key={href}
+        href={href}
+        className={cn(
+          "group flex items-center gap-3 rounded-sm px-3 py-2.5 text-sm font-medium transition-all",
+          active
+            ? "border border-gold/20 bg-gold/10 text-gold"
+            : "text-white/50 hover:bg-white/5 hover:text-white"
+        )}
+      >
+        <Icon size={16} className={active ? "text-gold" : ""} />
+        <span className="flex-1">{label}</span>
+        {label === "Website" && unreadCount > 0 && (
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gold text-xs font-bold text-dark">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        )}
+        {active && <ChevronRight size={14} />}
+      </Link>
+    );
+  };
 
   return (
     <>
@@ -75,42 +112,21 @@ export default function AdminSidebar({ isOpen = true, onClose, unreadCount = 0 }
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
-          {navItems.map(({ href, icon: Icon, label, exact }) => {
-            const active = isActive(href, exact);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-sm text-sm font-medium transition-all group",
-                  active
-                    ? "bg-gold/10 text-gold border border-gold/20"
-                    : "text-white/50 hover:text-white hover:bg-white/5"
-                )}
-              >
-                <Icon size={16} className={active ? "text-gold" : ""} />
-                <span className="flex-1">{label}</span>
-                {label === "Messages" && unreadCount > 0 && (
-                  <span className="bg-gold text-dark text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
-                    {unreadCount > 9 ? "9+" : unreadCount}
-                  </span>
-                )}
-                {active && <ChevronRight size={14} />}
-              </Link>
-            );
-          })}
+        <nav className="flex-1 overflow-y-auto px-3 py-6">
+          <div className="space-y-1">
+            {siteDiary.map((item) => renderItem(item))}
+          </div>
+
+          <div className="mt-8 border-t border-white/5 pt-6">
+            <p className="mb-2 px-3 font-mono text-[10px] uppercase tracking-[0.13em] text-white/25">
+              Public site
+            </p>
+            <div className="space-y-1">{website.map((item) => renderItem(item))}</div>
+          </div>
         </nav>
 
         {/* Bottom */}
         <div className="px-3 py-4 border-t border-white/5 space-y-1">
-          <Link
-            href="/admin/settings"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-sm text-sm text-white/50 hover:text-white hover:bg-white/5 transition-all"
-          >
-            <Settings size={16} />
-            Settings
-          </Link>
           <button
             onClick={() => signOut({ callbackUrl: "/admin/login" })}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-sm text-sm text-white/50 hover:text-red-400 hover:bg-red-400/5 transition-all"

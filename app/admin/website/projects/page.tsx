@@ -54,7 +54,7 @@ export default function AdminProjectsPage() {
           <p className="text-white/40 text-sm mt-1">{projects.length} total</p>
         </div>
         <Link
-          href="/admin/projects/new"
+          href="/admin/website/projects/new"
           className="flex items-center gap-2 bg-gold hover:bg-gold-light text-dark font-bold px-5 py-2.5 rounded-sm transition-all text-sm"
         >
           <Plus size={16} />
@@ -69,7 +69,7 @@ export default function AdminProjectsPage() {
       ) : projects.length === 0 ? (
         <div className="text-center py-20 bg-dark-lighter rounded-sm border border-white/5">
           <p className="text-white/30 mb-4">No projects yet</p>
-          <Link href="/admin/projects/new" className="text-gold hover:underline text-sm">Add your first project</Link>
+          <Link href="/admin/website/projects/new" className="text-gold hover:underline text-sm">Add your first project</Link>
         </div>
       ) : (
         <div className="bg-dark-lighter border border-white/5 rounded-sm overflow-hidden">
@@ -134,7 +134,7 @@ export default function AdminProjectsPage() {
                         {project.published ? <Eye size={15} /> : <EyeOff size={15} />}
                       </button>
                       <Link
-                        href={`/admin/projects/${project.id}/edit`}
+                        href={`/admin/website/projects/${project.id}/edit`}
                         className="p-1.5 rounded text-white/30 hover:text-gold hover:bg-gold/5 transition-all"
                       >
                         <Edit size={15} />
