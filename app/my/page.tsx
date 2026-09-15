@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { currentHouse, currentViewer, recordVisit } from "@/lib/owner/session";
 import {
   getHouse, getStages, getTimeline, getReports, getBuilder, getDecisions,
+  getVariations, getDocuments, getWetDays,
   activeStages, nextStage,
 } from "@/lib/db/owner";
 import HouseHeader from "@/components/owner/HouseHeader";
@@ -9,6 +10,9 @@ import Timeline from "@/components/owner/Timeline";
 import RegisterCard from "@/components/owner/RegisterCard";
 import Decisions from "@/components/owner/Decisions";
 import ReportPanel from "@/components/owner/ReportPanel";
+import Variations from "@/components/owner/Variations";
+import Documents from "@/components/owner/Documents";
+import WetDays from "@/components/owner/WetDays";
 
 export const dynamic = "force-dynamic";
 
@@ -23,13 +27,17 @@ export default async function MyBuild() {
 
   const viewer = await currentViewer(access.houseId);
 
-  const [stages, updates, reports, builder, decisions] = await Promise.all([
-    getStages(access.houseId),
-    getTimeline(access.houseId),
-    viewer ? getReports(access.houseId, viewer.id) : Promise.resolve([]),
-    getBuilder(),
-    getDecisions(access.houseId),
-  ]);
+  const [stages, updates, reports, builder, decisions, variations, documents, wetDays] =
+    await Promise.all([
+      getStages(access.houseId),
+      getTimeline(access.houseId),
+      viewer ? getReports(access.houseId, viewer.id) : Promise.resolve([]),
+      getBuilder(),
+      getDecisions(access.houseId),
+      getVariations(access.houseId),
+      getDocuments(access.houseId),
+      getWetDays(access.houseId),
+    ]);
 
   // What they opened the link to see. It was previously below the header, the
   // phase rail and a form — a scroll away from the one thing they came for.
@@ -69,9 +77,33 @@ export default async function MyBuild() {
         }))}
       />
 
+      {/* Beside the decisions, and for the same reason — this is the other
+          thing on the page that needs them to act rather than read. */}
+      <Variations
+        canDecide={Boolean(viewer)}
+        variations={variations.map((v) => ({
+          id: v.id,
+          reference: v.reference,
+          description: v.description,
+          amountCents: v.amountCents,
+          status: v.status,
+          sentAt: v.sentAt,
+          approvedAt: v.approvedAt,
+          declinedAt: v.declinedAt,
+          declineReason: v.declineReason,
+          decidedBy: v.approvedBy?.name ?? null,
+        }))}
+      />
+
       {!viewer && <RegisterCard />}
 
       <Timeline updates={updates} registered={Boolean(viewer)} />
+
+      {/* Below the timeline: these answer questions rather than report news,
+          and an owner opening the link wants today's photo first. */}
+      <WetDays days={wetDays} />
+
+      <Documents documents={documents} />
 
       <ReportPanel
         viewer={viewer}

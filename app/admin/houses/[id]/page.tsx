@@ -8,6 +8,9 @@ import RecentUpdates from "@/components/admin/RecentUpdates";
 import InternalNotes from "@/components/admin/InternalNotes";
 import DecisionsPanel from "@/components/admin/DecisionsPanel";
 import StageBoard from "@/components/admin/StageBoard";
+import VariationsPanel from "@/components/admin/VariationsPanel";
+import DocumentsPanel from "@/components/admin/DocumentsPanel";
+import WetDays from "@/components/admin/WetDays";
 import HouseStatus from "@/components/admin/HouseStatus";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +55,32 @@ export default async function HouseCapture({ params }: { params: { id: string } 
           answer: true,
         },
         orderBy: [{ status: "asc" }, { askedAt: "desc" }],
+      },
+      variations: {
+        select: {
+          id: true,
+          reference: true,
+          description: true,
+          amountCents: true,
+          status: true,
+          sentAt: true,
+          approvedAt: true,
+          declinedAt: true,
+          declineReason: true,
+          approvedBy: { select: { name: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      },
+      documents: {
+        where: { status: "ready" },
+        select: { id: true, title: true, category: true, bytes: true, uploadedAt: true },
+        orderBy: [{ category: "asc" }, { uploadedAt: "desc" }],
+      },
+      weatherDays: {
+        where: { workLost: true },
+        select: { id: true, date: true, note: true, rainfallMm: true, eotClaimedAt: true },
+        orderBy: { date: "desc" },
+        take: 60,
       },
       internalNotes: {
         select: {
@@ -132,6 +161,46 @@ export default async function HouseCapture({ params }: { params: { id: string } 
           askedAt: d.askedAt.toISOString(),
           answeredAt: d.answeredAt?.toISOString() ?? null,
           answer: d.answer,
+        }))}
+      />
+
+      <VariationsPanel
+        houseId={house.id}
+        variations={house.variations.map((v) => ({
+          id: v.id,
+          reference: v.reference,
+          description: v.description,
+          amountCents: v.amountCents,
+          status: v.status,
+          sentAt: v.sentAt?.toISOString() ?? null,
+          approvedAt: v.approvedAt?.toISOString() ?? null,
+          declinedAt: v.declinedAt?.toISOString() ?? null,
+          declineReason: v.declineReason,
+          decidedBy: v.approvedBy?.name ?? null,
+        }))}
+      />
+
+      <DocumentsPanel
+        houseId={house.id}
+        documents={house.documents.map((d) => ({
+          id: d.id,
+          title: d.title,
+          category: d.category,
+          bytes: d.bytes,
+          uploadedAt: d.uploadedAt.toISOString(),
+        }))}
+      />
+
+      <WetDays
+        houseId={house.id}
+        days={house.weatherDays.map((d) => ({
+          id: d.id,
+          // Date-only column: taking the ISO prefix keeps a Sydney evening from
+          // rendering as the day before once it crosses UTC midnight.
+          date: d.date.toISOString().slice(0, 10),
+          note: d.note,
+          rainfallMm: d.rainfallMm,
+          claimed: Boolean(d.eotClaimedAt),
         }))}
       />
 

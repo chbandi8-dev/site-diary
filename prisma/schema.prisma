@@ -255,6 +255,13 @@ enum PhotoStatus {
   ready
 }
 
+/// Same reserve-then-confirm lifecycle as a photo, kept as its own type so
+/// widening one never silently widens the other.
+enum DocumentStatus {
+  pending
+  ready
+}
+
 /// One build. The unit everything else hangs off, and the unit of access
 /// control — an owner can reach exactly the houses joined to them.
 model House {
@@ -642,19 +649,31 @@ model Decision {
 /// Contract-grade. Rows are append-only in practice: once approved, the
 /// approval fields are never rewritten.
 model Variation {
-  id           String          @id @default(uuid()) @db.Uuid
-  houseId      String          @map("house_id") @db.Uuid
-  reference    String
-  description  String
-  amountCents  Int             @map("amount_cents")
-  status       VariationStatus @default(draft)
-  sentAt       DateTime?       @map("sent_at") @db.Timestamptz(3)
-  approvedAt   DateTime?       @map("approved_at") @db.Timestamptz(3)
-  approvedById String?         @map("approved_by_id") @db.Uuid
+  id            String          @id @default(uuid()) @db.Uuid
+  houseId       String          @map("house_id") @db.Uuid
+  reference     String
+  description   String
+  amountCents   Int             @map("amount_cents")
+  status        VariationStatus @default(draft)
+  sentAt        DateTime?       @map("sent_at") @db.Timestamptz(3)
+  approvedAt    DateTime?       @map("approved_at") @db.Timestamptz(3)
+  approvedById  String?         @map("approved_by_id") @db.Uuid
   /// Captured at approval for evidentiary value.
-  approvedIp   String?         @map("approved_ip")
-  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  approvedIp    String?         @map("approved_ip")
+  /// Declining is a record too. Who declined, from where, and when is carried
+  /// by EvidenceEvent; these two are the denormalised current state.
+  declinedAt    DateTime?       @map("declined_at") @db.Timestamptz(3)
+  declineReason String?         @map("decline_reason")
+  /// A one-time code, emailed to the owner's own registered address and hashed
+  /// here, is what separates "the owner agreed to pay" from "somebody in the
+  /// group chat tapped a button". The house link is deliberately shareable, so
+  /// on its own it cannot carry a decision about money.
+  codeHash      String?         @map("code_hash")
+  codeSentTo    String?         @map("code_sent_to")
+  codeExpiresAt DateTime?       @map("code_expires_at") @db.Timestamptz(3)
+  codeAttempts  Int             @default(0) @map("code_attempts")
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   house      House  @relation(fields: [houseId], references: [id], onDelete: Cascade)
   approvedBy Owner? @relation(fields: [approvedById], references: [id])
@@ -664,19 +683,28 @@ model Variation {
   @@map("variations")
 }
 
+/// The owner's document shelf. Everything filed here is visible to them by
+/// design — there is no internal category, because a per-file visibility flag
+/// is one mistap away from publishing a subcontractor's quote to the client.
+/// Internal paperwork stays out of this table.
 model Document {
-  id         String   @id @default(uuid()) @db.Uuid
-  houseId    String   @map("house_id") @db.Uuid
+  id         String         @id @default(uuid()) @db.Uuid
+  houseId    String         @map("house_id") @db.Uuid
   title      String
-  category   String   @default("other")
-  key        String   @unique
+  category   String         @default("other")
+  key        String         @unique
   bytes      Int?
-  mimeType   String?  @map("mime_type")
-  uploadedAt DateTime @default(now()) @map("uploaded_at") @db.Timestamptz(3)
+  mimeType   String?        @map("mime_type")
+  /// Rows are written before the bytes land, so a failed upload leaves a
+  /// sweepable record rather than an unattributable object. Only `ready` rows
+  /// are ever listed.
+  status     DocumentStatus @default(pending)
+  uploadedAt DateTime       @default(now()) @map("uploaded_at") @db.Timestamptz(3)
 
   house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
 
   @@index([houseId, category])
+  @@index([status])
   @@map("documents")
 }
 
@@ -934,6 +962,10 @@ model WeatherDay {
   /// Whether work was actually lost, which is the contractual test — not
   /// whether it rained.
   workLost     Boolean   @default(false) @map("work_lost")
+  /// What the weather actually stopped — "slab pour pushed to Thursday".
+  /// An extension-of-time notice that says only "wet" invites an argument;
+  /// one that names the lost activity usually ends it.
+  note         String?
   source       String    @default("bom")
   eotClaimedAt DateTime? @map("eot_claimed_at") @db.Timestamptz(3)
 

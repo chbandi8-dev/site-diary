@@ -23,6 +23,12 @@ async function run(req: NextRequest) {
   const since = new Date(Date.now() - 7 * 86_400_000);
   const week = isoWeek(new Date());
 
+  // A look-ahead he dictated three weeks ago is worse than none: it describes a
+  // week that has already been and gone. Ten days is generous enough to cover
+  // writing it early and a digest that runs late, and short enough that a line
+  // can never survive into a second Friday.
+  const lookAheadFresh = new Date(Date.now() - 10 * 86_400_000);
+
   const houses = await prisma.house.findMany({
     where: { status: { in: ["active", "practical_completion"] } },
     select: {
@@ -30,6 +36,8 @@ async function run(req: NextRequest) {
       address: true,
       waitingOn: true,
       waitingOnEta: true,
+      nextWeek: true,
+      nextWeekSetAt: true,
       stages: {
         where: { status: "in_progress" },
         select: { name: true },
@@ -39,6 +47,15 @@ async function run(req: NextRequest) {
         where: { publishedAt: { not: null }, occurredAt: { gte: since }, deletedAt: null },
         select: { body: true, occurredAt: true },
         orderBy: { occurredAt: "asc" },
+      },
+      variations: {
+        where: { status: "sent" },
+        select: { reference: true },
+      },
+      weatherDays: {
+        where: { workLost: true, date: { gte: since } },
+        select: { date: true },
+        orderBy: { date: "asc" },
       },
     },
   });
@@ -54,7 +71,7 @@ async function run(req: NextRequest) {
         recipient,
         dedupeKey: `digest:${week}:${house.id}:${recipient.ownerId}`,
         subject: `${house.address} — this week`,
-        body: composeDigest(house),
+        body: composeDigest(house, lookAheadFresh),
         houseId: house.id,
       }))
     );
@@ -69,8 +86,12 @@ type DigestHouse = {
   address: string;
   waitingOn: string | null;
   waitingOnEta: Date | null;
+  nextWeek: string | null;
+  nextWeekSetAt: Date | null;
   stages: { name: string }[];
   updates: { body: string; occurredAt: Date }[];
+  variations: { reference: string }[];
+  weatherDays: { date: Date }[];
 };
 
 /**
@@ -78,7 +99,7 @@ type DigestHouse = {
  * "nothing visible happened, here is why, here is what is next" is the one that
  * stops the Saturday drive-past turning into a Sunday phone call.
  */
-function composeDigest(house: DigestHouse): string {
+function composeDigest(house: DigestHouse, lookAheadFresh: Date): string {
   const lines: string[] = [];
 
   if (house.updates.length > 0) {
@@ -87,6 +108,11 @@ function composeDigest(house: DigestHouse): string {
       const day = u.occurredAt.toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "short" });
       lines.push(`${day} — ${u.body}`);
     }
+  } else if (house.weatherDays.length > 0) {
+    // The weather already explains the quiet week, and it must be allowed to.
+    // The reassuring version below would have him telling an owner their dates
+    // are safe in the same week he is logging the days that move them.
+    lines.push("No work on site this week — the weather stopped us.");
   } else {
     lines.push(
       "No visible work on site this week. That is normal at some points in a build, " +
@@ -94,7 +120,30 @@ function composeDigest(house: DigestHouse): string {
     );
   }
 
+  // Days lost to weather, stated and no more. Any reassurance here — that the
+  // dates still hold, that it is absorbed — is a sentence an owner can quote
+  // back at him when he serves the extension-of-time notice these same days
+  // support.
+  if (house.weatherDays.length > 0) {
+    const days = house.weatherDays.map((w) =>
+      w.date.toLocaleDateString("en-AU", { weekday: "long" })
+    );
+    lines.push(
+      "",
+      house.weatherDays.length === 1
+        ? `We lost ${days[0]} to the weather.`
+        : `We lost ${house.weatherDays.length} days to the weather: ${days.join(", ")}.`
+    );
+  }
+
   lines.push("");
+
+  // The part they cannot see for themselves, and the reason for the Thursday
+  // screen. A digest that only recaps the week just gone tells them what the
+  // photos already showed.
+  if (house.nextWeek && house.nextWeekSetAt && house.nextWeekSetAt >= lookAheadFresh) {
+    lines.push("Next week:", house.nextWeek, "");
+  }
 
   if (house.stages.length > 0) {
     lines.push(`Underway: ${house.stages.map((s) => s.name).join(", ")}.`);
@@ -105,6 +154,17 @@ function composeDigest(house: DigestHouse): string {
       ? `, expected ${house.waitingOnEta.toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" })}`
       : "";
     lines.push(`We are waiting on ${house.waitingOn}${eta}.`);
+  }
+
+  // Last thing before the sign-off, because it is the only line that asks them
+  // to do something — and an unapproved variation is work that cannot start.
+  if (house.variations.length > 0) {
+    lines.push(
+      "",
+      house.variations.length === 1
+        ? `Variation ${house.variations[0].reference} is still waiting on your approval. Nothing is charged, and that work does not start, until you decide.`
+        : `${house.variations.length} variations are still waiting on your approval. Nothing is charged, and that work does not start, until you decide.`
+    );
   }
 
   lines.push("", "If anything here raises a question, reply on your build page and I will get back to you.");

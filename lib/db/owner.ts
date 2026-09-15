@@ -260,3 +260,179 @@ export async function answerDecision(
   });
   return result.count === 1;
 }
+
+// ---------------------------------------------------------------------------
+// Variations.
+//
+// The only thing on the owner's page that costs them money, which is why it is
+// the only thing guarded by more than the link. See
+// `app/api/owner/variations/route.ts` for what the one-time code does and does
+// not prove.
+// ---------------------------------------------------------------------------
+
+/**
+ * What this house has been asked to agree to.
+ *
+ * Drafts are excluded: a variation he is still pricing is not an offer, and an
+ * owner seeing a number that later changes is worse than seeing nothing.
+ */
+export async function getVariations(houseId: string) {
+  return prisma.variation.findMany({
+    where: { houseId, status: { in: ["sent", "approved", "declined"] } },
+    select: {
+      id: true,
+      reference: true,
+      description: true,
+      amountCents: true,
+      status: true,
+      sentAt: true,
+      approvedAt: true,
+      declinedAt: true,
+      declineReason: true,
+      approvedBy: { select: { name: true } },
+    },
+    orderBy: [{ sentAt: "desc" }],
+  });
+}
+
+/** One variation, scoped to the house the link resolved to. */
+export async function getVariationForDecision(houseId: string, variationId: string) {
+  return prisma.variation.findFirst({
+    where: { id: variationId, houseId, status: "sent" },
+    select: {
+      id: true,
+      reference: true,
+      description: true,
+      amountCents: true,
+      houseId: true,
+      codeHash: true,
+      codeSentTo: true,
+      codeExpiresAt: true,
+      codeAttempts: true,
+      house: { select: { address: true } },
+    },
+  });
+}
+
+export async function storeVariationCode(
+  houseId: string,
+  variationId: string,
+  input: { codeHash: string; sentTo: string; expiresAt: Date }
+): Promise<boolean> {
+  // `status: "sent"` in the filter is what stops a code being minted for a
+  // variation that has already been decided, which would otherwise allow a
+  // second, later decision to overwrite the first.
+  const result = await prisma.variation.updateMany({
+    where: { id: variationId, houseId, status: "sent" },
+    data: {
+      codeHash: input.codeHash,
+      codeSentTo: input.sentTo,
+      codeExpiresAt: input.expiresAt,
+      codeAttempts: 0,
+    },
+  });
+  return result.count === 1;
+}
+
+export async function countVariationAttempt(
+  houseId: string,
+  variationId: string
+): Promise<void> {
+  await prisma.variation.updateMany({
+    where: { id: variationId, houseId },
+    data: { codeAttempts: { increment: 1 } },
+  });
+}
+
+/**
+ * Records the decision and burns the code in one statement.
+ *
+ * `status: "sent"` in the where clause makes this idempotent under a double
+ * tap: the second write matches nothing, so a variation cannot be approved and
+ * then declined a second later by an impatient thumb.
+ */
+export async function decideVariation(
+  houseId: string,
+  variationId: string,
+  input:
+    | { decision: "approve"; ownerId: string; ip: string | null }
+    | { decision: "decline"; ownerId: string; ip: string | null; reason: string | null }
+): Promise<boolean> {
+  const now = new Date();
+  const result = await prisma.variation.updateMany({
+    where: { id: variationId, houseId, status: "sent" },
+    data:
+      input.decision === "approve"
+        ? {
+            status: "approved",
+            approvedAt: now,
+            approvedById: input.ownerId,
+            approvedIp: input.ip,
+            codeHash: null,
+            codeExpiresAt: null,
+          }
+        : {
+            status: "declined",
+            declinedAt: now,
+            declineReason: input.reason,
+            approvedById: input.ownerId,
+            approvedIp: input.ip,
+            codeHash: null,
+            codeExpiresAt: null,
+          },
+  });
+  return result.count === 1;
+}
+
+// ---------------------------------------------------------------------------
+// Documents and weather.
+// ---------------------------------------------------------------------------
+
+/**
+ * Their paperwork. Signed URLs are minted per render, same as photos — the
+ * bucket is private and a plan set is not something to leave on a public URL.
+ */
+export async function getDocuments(houseId: string) {
+  const docs = await prisma.document.findMany({
+    where: { houseId, status: "ready" },
+    select: {
+      id: true,
+      title: true,
+      category: true,
+      key: true,
+      bytes: true,
+      mimeType: true,
+      uploadedAt: true,
+    },
+    orderBy: [{ category: "asc" }, { uploadedAt: "desc" }],
+  });
+
+  return Promise.all(
+    docs.map(async (d) => ({
+      id: d.id,
+      title: d.title,
+      category: d.category,
+      bytes: d.bytes,
+      mimeType: d.mimeType,
+      uploadedAt: d.uploadedAt,
+      url: await signDownload(d.key),
+    }))
+  );
+}
+
+/**
+ * Days lost to weather.
+ *
+ * Shown because "why has my date moved" is the question underneath most owner
+ * frustration, and a list of dates answers it better than a paragraph. Only
+ * days where work was actually lost appear — it raining on a Sunday is not
+ * something an owner needs a notification about.
+ */
+export async function getWetDays(houseId: string, limit = 60) {
+  return prisma.weatherDay.findMany({
+    where: { houseId, workLost: true },
+    select: { id: true, date: true, note: true, rainfallMm: true },
+    orderBy: { date: "desc" },
+    take: limit,
+  });
+}
