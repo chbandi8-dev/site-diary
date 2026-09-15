@@ -22,7 +22,7 @@ ALTER TABLE "variations"
 ALTER TABLE "documents"
   ADD COLUMN "status" "DocumentStatus" NOT NULL DEFAULT 'pending';
 
-UPDATE "documents" SET "status" = 'ready';
+UPDATE "documents" SET "status" = 'ready' WHERE "status" = 'pending';
 
 -- CreateIndex
 CREATE INDEX "documents_status_idx" ON "documents"("status");
