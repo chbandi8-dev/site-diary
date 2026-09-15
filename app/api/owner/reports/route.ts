@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { currentHouse, currentViewer } from "@/lib/owner/session";
 import { createReport, photoBelongsToHouse } from "@/lib/db/owner";
+import { deliverNow } from "@/lib/notify";
 import { z } from "zod";
 import { overLimit, wrongOrigin } from "@/lib/owner/guard";
 
@@ -59,6 +60,9 @@ export async function POST(req: NextRequest) {
   }
 
   const report = await createReport(access.houseId, viewer.id, parsed.data);
+
+  // He hears about it now, not whenever a scheduled job next runs.
+  await deliverNow();
 
   return NextResponse.json(report, { status: 201 });
 }

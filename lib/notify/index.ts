@@ -176,6 +176,30 @@ function compose(row: PendingRow): string {
 
 export type OwnerRecipient = Extract<Recipient, { audience: "owner" }>;
 
+/**
+ * Sends what is waiting, right now.
+ *
+ * Delivery used to depend entirely on a poll every fifteen minutes, which
+ * needs a paid hosting plan and meant an owner could wait a quarter of an hour
+ * to hear that their frame went up. Sending inline is both free and better:
+ * the email lands while he is still standing there.
+ *
+ * The queue is not bypassed — rows are still written first, so a provider
+ * outage cannot lose a message. This only drains it sooner. It also picks up
+ * anything left over from an earlier failure, which means the effective retry
+ * cadence is "whenever he does anything" rather than whenever a cron fires.
+ *
+ * Small batch and swallowed errors on purpose: nothing about his send should
+ * fail because an unrelated email bounced.
+ */
+export async function deliverNow(limit = 12): Promise<void> {
+  try {
+    await flush(limit);
+  } catch {
+    // The rows stay queued and the daily job will pick them up.
+  }
+}
+
 /** Everyone who should hear about something at this house. */
 export async function ownersOf(houseId: string): Promise<OwnerRecipient[]> {
   const links = await prisma.houseOwner.findMany({

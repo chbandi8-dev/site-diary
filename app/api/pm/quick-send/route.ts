@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { queue, ownersOf } from "@/lib/notify";
+import { queue, ownersOf, deliverNow } from "@/lib/notify";
 import { z } from "zod";
 
 /**
@@ -155,6 +155,7 @@ export async function POST(req: NextRequest) {
         updateId: update.id,
       }))
     );
+    await deliverNow();
   }
 
   return NextResponse.json(

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { deliverNow } from "@/lib/notify";
 import { z } from "zod";
 
 /**
@@ -61,6 +62,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       acknowledgedAt: existing.acknowledgedAt ?? new Date(),
     },
   });
+
+  // The reply notification is queued by a database trigger, so it needs the
+  // same nudge as everything else.
+  await deliverNow();
 
   return NextResponse.json({ ok: true });
 }
