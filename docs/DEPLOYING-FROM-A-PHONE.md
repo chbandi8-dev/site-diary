@@ -11,20 +11,35 @@ working branch is mirrored across, and Vercel builds it.
 Setting it up means creating one token and pasting it into one box. Both are
 browser steps, so both work on a phone.
 
+First, in Chrome: **⋮ → Desktop site.** GitHub's settings pages are cramped on
+a phone and far easier to work with that way. The GitHub *app* cannot create
+tokens or secrets at all — this has to be the browser.
+
 ### 1. Create the token
 
 On **github.com**, signed in as the account that can write to
 `chbandi8-dev/site-diary`:
 
-**Settings → Developer settings → Personal access tokens → Fine-grained
-tokens → Generate new token**
+**Settings → Developer settings → Personal access tokens → Tokens (classic) →
+Generate new token (classic)**
 
-- **Repository access:** Only select repositories → `chbandi8-dev/site-diary`
-- **Permissions:** Repository permissions → **Contents: Read and write**
-- **Expiry:** whatever is comfortable. The mirror stops working silently when
-  it lapses, so a reminder is worth setting alongside it.
+- **Note:** `site-diary mirror`
+- **Expiration:** the mirror stops working when it lapses, so set a reminder
+  alongside it, or choose no expiry
+- **Scopes:** tick **`repo`**, the first checkbox. Nothing else.
 
 Copy the token. GitHub shows it exactly once.
+
+The classic token is suggested over the fine-grained one purely because the
+form is three fields rather than four screens, which matters on a phone. The
+trade is real and worth knowing: `repo` covers every repository on the account,
+where a fine-grained token could be limited to `site-diary` alone. It only ever
+lives inside GitHub's encrypted secrets, so the exposure is small — but if the
+fine-grained form is bearable, it is the better choice:
+
+**Fine-grained tokens → Generate new token**, resource owner set to the account
+owning `site-diary`, *Only select repositories* → `chbandi8-dev/site-diary`,
+then Repository permissions → **Contents: Read and write**.
 
 ### 2. Paste it in
 
