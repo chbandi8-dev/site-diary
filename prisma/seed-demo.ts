@@ -32,6 +32,8 @@ const HOUSES: {
   handoverTo: string;
   updates: DemoUpdate[];
   report?: { kind: string; body: string; replied?: string };
+  variations?: { description: string; amount: number; decided?: "approved" | "declined" }[];
+  wetDays?: { daysAgo: number; note: string }[];
 }[] = [
   {
     address: "14 Wattle Grove",
@@ -55,7 +57,7 @@ const HOUSES: {
         body:
           "The roof is on and your house is watertight. Everything inside can now get underway.",
       },
-      { daysAgo: 6, kind: "weather", body: "Too wet to work on site today, so the crew stood down. This is normal for this time of year and it's already accounted for in your dates." },
+      { daysAgo: 6, kind: "weather", body: "Too wet to work on site today, so the crew stood down. We log the days we lose to weather so you can see exactly where the time goes." },
       { daysAgo: 9, body: "Your roof tiles arrived on site today and have been checked over." },
       { daysAgo: 14, kind: "milestone", body: "The frame is up. This is the one everyone waits for — you can walk through and stand in your actual rooms for the first time." },
     ],
@@ -64,6 +66,22 @@ const HOUSES: {
       body:
         "There's a gap under the window opening in the photo from Tuesday — is that meant to be there?",
     },
+    variations: [
+      {
+        description:
+          "Extra double power point and data point to the study, as discussed on site.",
+        amount: 480,
+      },
+      {
+        description: "Upgrade to the taller kitchen overhead cupboards.",
+        amount: 1250,
+        decided: "approved",
+      },
+    ],
+    wetDays: [
+      { daysAgo: 6, note: "Rained out — no bricklaying" },
+      { daysAgo: 7, note: "Site too soft for the scaffold truck" },
+    ],
   },
   {
     address: "7 Ironbark Close",
@@ -100,6 +118,14 @@ const HOUSES: {
       },
       { daysAgo: 11, body: "Site fencing, the toilet and the bin are in, and the block has been set out ready for excavation." },
     ],
+    variations: [
+      {
+        description: "Additional tap point to the rear of the garage.",
+        amount: 320,
+        decided: "declined",
+      },
+    ],
+    wetDays: [{ daysAgo: 15, note: "Excavation stood down — too wet to dig" }],
   },
   {
     address: "3 Casuarina Way",
@@ -225,6 +251,57 @@ export async function seedDemo(prisma: PrismaClient) {
             : {}),
         },
       });
+    }
+
+    // Variations are seeded already sent, never as drafts — a draft is
+    // invisible to the owner, so it would demonstrate nothing on the page this
+    // data exists to show.
+    if (spec.variations?.length) {
+      const first = await prisma.owner.findUniqueOrThrow({
+        where: { email: spec.owners[0].email },
+        select: { id: true },
+      });
+
+      for (let i = 0; i < spec.variations.length; i++) {
+        const v = spec.variations[i];
+        await prisma.variation.create({
+          data: {
+            houseId: house.id,
+            reference: `VO-${String(i + 1).padStart(2, "0")}`,
+            description: v.description,
+            amountCents: Math.round(v.amount * 100),
+            status: v.decided ?? "sent",
+            sentAt: daysAgo(5),
+            ...(v.decided === "approved"
+              ? { approvedAt: daysAgo(4), approvedById: first.id }
+              : {}),
+            ...(v.decided === "declined"
+              ? {
+                  declinedAt: daysAgo(4),
+                  approvedById: first.id,
+                  declineReason: "We'll do this ourselves after handover.",
+                }
+              : {}),
+          },
+        });
+      }
+    }
+
+    if (spec.wetDays?.length) {
+      for (const w of spec.wetDays) {
+        const date = daysAgo(w.daysAgo);
+        await prisma.weatherDay.create({
+          data: {
+            houseId: house.id,
+            // Date-only column: normalising to UTC midnight keeps the unique
+            // constraint doing its job instead of admitting the same day twice.
+            date: new Date(date.toISOString().slice(0, 10)),
+            workLost: true,
+            note: w.note,
+            source: "pm",
+          },
+        });
+      }
     }
   }
 

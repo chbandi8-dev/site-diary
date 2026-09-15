@@ -99,6 +99,10 @@ psql "$DIRECT_URL" -f supabase/migrations/0002_notify.sql
 npm run db:verify-rls                          # must pass before you deploy
 ```
 
+If the database is already live from an earlier release, `npm run db:deploy`
+is still the command — it applies only the migrations that have not run yet, and
+does nothing on a database that is already current. Run it after every pull.
+
 **Never run `prisma db push`.** It skips migration SQL, so it would create the
 tables and silently skip every policy. The script has been removed from
 `package.json`; do not reintroduce it.
