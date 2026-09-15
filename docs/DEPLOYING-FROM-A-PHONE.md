@@ -4,22 +4,52 @@ Everything below is done in a phone browser. No terminal, ever.
 
 ## The one-time setup
 
-Vercel watches a GitHub repository and rebuilds the site whenever it changes.
-Point it at the repository the work actually happens in, and there is nothing
-left to do by hand.
+Development happens in `rohithan77/Construction-site`. Vercel watches
+`chbandi8-dev/site-diary`. A GitHub Action bridges the two: every push to the
+working branch is mirrored across, and Vercel builds it.
 
-1. Open **vercel.com** and sign in.
-2. Open the **site-diary** project.
-3. **Settings → Git**.
-4. Disconnect the repository it currently watches.
-5. Connect **`rohithan77/Construction-site`**. If it isn't offered, tap
-   *Adjust GitHub App Permissions* and grant access to that account.
-6. Still under Settings → Git, set **Production Branch** to
-   `claude/construction-owner-updates-jaqeyb`.
-7. **Deployments → Redeploy.**
+Setting it up means creating one token and pasting it into one box. Both are
+browser steps, so both work on a phone.
 
-Keep the same project rather than making a new one: the environment variables
-stay where they are, so no secrets need retyping on a phone keyboard.
+### 1. Create the token
+
+On **github.com**, signed in as the account that can write to
+`chbandi8-dev/site-diary`:
+
+**Settings → Developer settings → Personal access tokens → Fine-grained
+tokens → Generate new token**
+
+- **Repository access:** Only select repositories → `chbandi8-dev/site-diary`
+- **Permissions:** Repository permissions → **Contents: Read and write**
+- **Expiry:** whatever is comfortable. The mirror stops working silently when
+  it lapses, so a reminder is worth setting alongside it.
+
+Copy the token. GitHub shows it exactly once.
+
+### 2. Paste it in
+
+On **`rohithan77/Construction-site`**:
+
+**Settings → Secrets and variables → Actions → New repository secret**
+
+- **Name:** `MIRROR_TOKEN` — exactly that, it is what the workflow looks for
+- **Secret:** the token
+
+### 3. Run it once
+
+**Actions → Mirror to the deployment repo → Run workflow.**
+
+Green tick means the two repositories are in sync and Vercel is building.
+
+Nothing about the Vercel project changes. It keeps watching the same
+repository, with the same environment variables and the same URL.
+
+## If the mirror ever stops
+
+The workflow fails loudly rather than quietly doing nothing, so **Actions** in
+`rohithan77/Construction-site` is the place to look. A red run there, with a
+message about `MIRROR_TOKEN`, means the token expired — create a new one and
+replace the secret. Then **Run workflow** to catch up.
 
 ## After that
 

@@ -1,0 +1,60 @@
+name: Mirror to the deployment repo
+
+# Development happens in this repository; Vercel watches a different one.
+# Rather than copying commits across by hand from a laptop, every push here is
+# mirrored there, and Vercel builds it as though nothing unusual happened.
+#
+# This exists because the person running it works from a phone. Any step that
+# needs a terminal is a step that does not get done.
+
+on:
+  push:
+    branches:
+      - claude/construction-owner-updates-jaqeyb
+  # Lets the mirror be re-run by hand from the Actions tab — which works on a
+  # phone — if a push happened while the token was missing or expired.
+  workflow_dispatch:
+
+# Nothing here reads or writes this repository through the default token.
+permissions:
+  contents: read
+
+concurrency:
+  # Two pushes in quick succession would otherwise race, and the loser would
+  # force-push older code over newer.
+  group: mirror-to-site-diary
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the full history
+        uses: actions/checkout@v4
+        with:
+          # A shallow clone cannot be pushed to another repository.
+          fetch-depth: 0
+
+      - name: Push to chbandi8-dev/site-diary
+        env:
+          MIRROR_TOKEN: ${{ secrets.MIRROR_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${MIRROR_TOKEN:-}" ]; then
+            echo "::error::MIRROR_TOKEN is not set. Add a fine-grained personal access token with Contents: Read and write on chbandi8-dev/site-diary, as a repository secret named MIRROR_TOKEN."
+            exit 1
+          fi
+
+          # Force, because the destination is a deployment target rather than a
+          # place anyone commits to. Anything pushed directly there is replaced
+          # by whatever is here, which is the intended behaviour for a mirror
+          # and the reason nobody should edit that repository by hand.
+          #
+          # The token is interpolated into the URL rather than echoed; Actions
+          # masks registered secrets in logs, and nothing here prints it.
+          git push --force \
+            "https://x-access-token:${MIRROR_TOKEN}@github.com/chbandi8-dev/site-diary.git" \
+            HEAD:refs/heads/main
+
+          echo "Mirrored $(git rev-parse --short HEAD) to chbandi8-dev/site-diary main."
