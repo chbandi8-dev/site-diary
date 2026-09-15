@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out the full history
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # A shallow clone cannot be pushed to another repository.
           fetch-depth: 0
@@ -42,7 +42,7 @@ jobs:
           set -euo pipefail
 
           if [ -z "${MIRROR_TOKEN:-}" ]; then
-            echo "::error::MIRROR_TOKEN is not set. Add a fine-grained personal access token with Contents: Read and write on chbandi8-dev/site-diary, as a repository secret named MIRROR_TOKEN."
+            echo "::error::MIRROR_TOKEN is not set. Create a personal access token that can write to chbandi8-dev/site-diary — classic with the 'repo' scope, or fine-grained with Contents: Read and write — then add it here under Settings, Secrets and variables, Actions, as a repository secret named MIRROR_TOKEN. See docs/DEPLOYING-FROM-A-PHONE.md."
             exit 1
           fi
 
