@@ -5,6 +5,8 @@ import { requireStaff } from "@/lib/auth-guard";
 import QuickSend from "@/components/admin/QuickSend";
 import HouseLink from "@/components/admin/HouseLink";
 import RecentUpdates from "@/components/admin/RecentUpdates";
+import InternalNotes from "@/components/admin/InternalNotes";
+import DecisionsPanel from "@/components/admin/DecisionsPanel";
 import StageBoard from "@/components/admin/StageBoard";
 import HouseStatus from "@/components/admin/HouseStatus";
 
@@ -37,6 +39,29 @@ export default async function HouseCapture({ params }: { params: { id: string } 
         select: { hint: true, lastUsedAt: true, useCount: true },
         orderBy: { createdAt: "desc" },
         take: 1,
+      },
+      decisions: {
+        where: { status: { in: ["open", "answered"] } },
+        select: {
+          id: true,
+          question: true,
+          dueDate: true,
+          status: true,
+          askedAt: true,
+          answeredAt: true,
+          answer: true,
+        },
+        orderBy: [{ status: "asc" }, { askedAt: "desc" }],
+      },
+      internalNotes: {
+        select: {
+          id: true,
+          body: true,
+          createdAt: true,
+          author: { select: { name: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 15,
       },
       updates: {
         where: { deletedAt: null },
@@ -94,6 +119,29 @@ export default async function HouseCapture({ params }: { params: { id: string } 
           name: o.owner.name,
           email: o.owner.email,
           revoked: Boolean(o.revokedAt),
+        }))}
+      />
+
+      <DecisionsPanel
+        houseId={house.id}
+        decisions={house.decisions.map((d) => ({
+          id: d.id,
+          question: d.question,
+          dueDate: d.dueDate?.toISOString() ?? null,
+          status: d.status,
+          askedAt: d.askedAt.toISOString(),
+          answeredAt: d.answeredAt?.toISOString() ?? null,
+          answer: d.answer,
+        }))}
+      />
+
+      <InternalNotes
+        houseId={house.id}
+        notes={house.internalNotes.map((n) => ({
+          id: n.id,
+          body: n.body,
+          createdAt: n.createdAt.toISOString(),
+          author: n.author?.name ?? "",
         }))}
       />
 

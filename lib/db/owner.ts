@@ -221,3 +221,42 @@ export async function getBuilder() {
     email: map.get("contact_email") ?? null,
   };
 }
+
+/** Choices the builder is waiting on from this house. */
+export async function getDecisions(houseId: string) {
+  return prisma.decision.findMany({
+    where: { houseId, status: { in: ["open", "answered"] } },
+    select: {
+      id: true,
+      question: true,
+      detail: true,
+      options: true,
+      dueDate: true,
+      consequence: true,
+      status: true,
+      askedAt: true,
+      answeredAt: true,
+      answer: true,
+    },
+    orderBy: [{ status: "asc" }, { dueDate: "asc" }],
+  });
+}
+
+/**
+ * An owner answering.
+ *
+ * Only an open decision on their own house can be answered, and the answer
+ * timestamp is the server's. A client-supplied one would be worthless in the
+ * argument this record exists to settle.
+ */
+export async function answerDecision(
+  houseId: string,
+  decisionId: string,
+  answer: string
+): Promise<boolean> {
+  const result = await prisma.decision.updateMany({
+    where: { id: decisionId, houseId, status: "open" },
+    data: { answer, answeredAt: new Date(), status: "answered" },
+  });
+  return result.count === 1;
+}

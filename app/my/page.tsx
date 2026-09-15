@@ -1,11 +1,13 @@
 import { redirect } from "next/navigation";
 import { currentHouse, currentViewer, recordVisit } from "@/lib/owner/session";
 import {
-  getHouse, getStages, getTimeline, getReports, getBuilder, activeStages, nextStage,
+  getHouse, getStages, getTimeline, getReports, getBuilder, getDecisions,
+  activeStages, nextStage,
 } from "@/lib/db/owner";
 import HouseHeader from "@/components/owner/HouseHeader";
 import Timeline from "@/components/owner/Timeline";
 import RegisterCard from "@/components/owner/RegisterCard";
+import Decisions from "@/components/owner/Decisions";
 import ReportPanel from "@/components/owner/ReportPanel";
 
 export const dynamic = "force-dynamic";
@@ -21,11 +23,12 @@ export default async function MyBuild() {
 
   const viewer = await currentViewer(access.houseId);
 
-  const [stages, updates, reports, builder] = await Promise.all([
+  const [stages, updates, reports, builder, decisions] = await Promise.all([
     getStages(access.houseId),
     getTimeline(access.houseId),
     viewer ? getReports(access.houseId, viewer.id) : Promise.resolve([]),
     getBuilder(),
+    getDecisions(access.houseId),
   ]);
 
   // What they opened the link to see. It was previously below the header, the
@@ -49,6 +52,23 @@ export default async function MyBuild() {
         of their own build is the moment they will happily hand over an email —
         asking first spends that goodwill and loses people at the door.
       */}
+      {/* Above the timeline: this is the one thing on the page that asks
+          something of them rather than telling them something. */}
+      <Decisions
+        canAnswer={Boolean(viewer)}
+        decisions={decisions.map((d) => ({
+          id: d.id,
+          question: d.question,
+          detail: d.detail,
+          options: Array.isArray(d.options) ? (d.options as string[]) : [],
+          dueDate: d.dueDate,
+          consequence: d.consequence,
+          status: d.status,
+          answer: d.answer,
+          answeredAt: d.answeredAt,
+        }))}
+      />
+
       {!viewer && <RegisterCard />}
 
       <Timeline updates={updates} registered={Boolean(viewer)} />
