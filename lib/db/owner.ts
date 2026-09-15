@@ -436,3 +436,26 @@ export async function getWetDays(houseId: string, limit = 60) {
     take: limit,
   });
 }
+
+/**
+ * The walk-through list.
+ *
+ * Owner-visible from the moment it exists, including the items his own sweep
+ * found. Hiding those would make the list look like a record of his mistakes
+ * rather than what it is — the work being closed out.
+ */
+export async function getDefects(houseId: string) {
+  return prisma.defect.findMany({
+    where: { houseId },
+    select: {
+      id: true,
+      reference: true,
+      location: true,
+      description: true,
+      status: true,
+      raisedByOwner: true,
+      resolvedAt: true,
+    },
+    orderBy: [{ status: "asc" }, { raisedAt: "asc" }],
+  });
+}

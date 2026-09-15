@@ -11,6 +11,8 @@ import StageBoard from "@/components/admin/StageBoard";
 import VariationsPanel from "@/components/admin/VariationsPanel";
 import DocumentsPanel from "@/components/admin/DocumentsPanel";
 import WetDays from "@/components/admin/WetDays";
+import DefectsPanel from "@/components/admin/DefectsPanel";
+import ForecastPanel from "@/components/admin/ForecastPanel";
 import HouseStatus from "@/components/admin/HouseStatus";
 
 export const dynamic = "force-dynamic";
@@ -81,6 +83,24 @@ export default async function HouseCapture({ params }: { params: { id: string } 
         select: { id: true, date: true, note: true, rainfallMm: true, eotClaimedAt: true },
         orderBy: { date: "desc" },
         take: 60,
+      },
+      defects: {
+        select: {
+          id: true,
+          reference: true,
+          location: true,
+          description: true,
+          status: true,
+          raisedByOwner: true,
+          targetAt: true,
+          resolvedAt: true,
+        },
+        orderBy: [{ status: "asc" }, { raisedAt: "asc" }],
+      },
+      forecasts: {
+        select: { from: true, to: true, reason: true, createdAt: true, notifiedAt: true },
+        orderBy: { createdAt: "desc" },
+        take: 6,
       },
       internalNotes: {
         select: {
@@ -201,6 +221,31 @@ export default async function HouseCapture({ params }: { params: { id: string } 
           note: d.note,
           rainfallMm: d.rainfallMm,
           claimed: Boolean(d.eotClaimedAt),
+        }))}
+      />
+
+      <ForecastPanel
+        houseId={house.id}
+        history={house.forecasts.map((h) => ({
+          from: h.from.toISOString(),
+          to: h.to.toISOString(),
+          reason: h.reason,
+          createdAt: h.createdAt.toISOString(),
+          notified: Boolean(h.notifiedAt),
+        }))}
+      />
+
+      <DefectsPanel
+        houseId={house.id}
+        defects={house.defects.map((d) => ({
+          id: d.id,
+          reference: d.reference,
+          location: d.location,
+          description: d.description,
+          status: d.status,
+          raisedByOwner: d.raisedByOwner,
+          targetAt: d.targetAt?.toISOString() ?? null,
+          resolvedAt: d.resolvedAt?.toISOString() ?? null,
         }))}
       />
 

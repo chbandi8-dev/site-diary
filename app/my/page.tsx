@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { currentHouse, currentViewer, recordVisit } from "@/lib/owner/session";
 import {
   getHouse, getStages, getTimeline, getReports, getBuilder, getDecisions,
-  getVariations, getDocuments, getWetDays,
+  getVariations, getDocuments, getWetDays, getDefects,
   activeStages, nextStage,
 } from "@/lib/db/owner";
 import HouseHeader from "@/components/owner/HouseHeader";
@@ -13,6 +13,7 @@ import ReportPanel from "@/components/owner/ReportPanel";
 import Variations from "@/components/owner/Variations";
 import Documents from "@/components/owner/Documents";
 import WetDays from "@/components/owner/WetDays";
+import Defects from "@/components/owner/Defects";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,7 @@ export default async function MyBuild() {
 
   const viewer = await currentViewer(access.houseId);
 
-  const [stages, updates, reports, builder, decisions, variations, documents, wetDays] =
+  const [stages, updates, reports, builder, decisions, variations, documents, wetDays, defects] =
     await Promise.all([
       getStages(access.houseId),
       getTimeline(access.houseId),
@@ -37,6 +38,7 @@ export default async function MyBuild() {
       getVariations(access.houseId),
       getDocuments(access.houseId),
       getWetDays(access.houseId),
+      getDefects(access.houseId),
     ]);
 
   // What they opened the link to see. It was previously below the header, the
@@ -98,6 +100,11 @@ export default async function MyBuild() {
       {!viewer && <RegisterCard />}
 
       <Timeline updates={updates} registered={Boolean(viewer)} />
+
+      {/* In the handover fortnight this is why they open the page at all, so
+          it sits directly under the timeline rather than with the reference
+          material below. */}
+      <Defects defects={defects} />
 
       {/* Below the timeline: these answer questions rather than report news,
           and an owner opening the link wants today's photo first. */}
