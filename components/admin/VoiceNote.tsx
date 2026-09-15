@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Loader2, Mic, Square } from "lucide-react";
+import { useDictation } from "./useDictation";
 
 /**
  * Say what happened; it writes the update.
@@ -20,17 +21,6 @@ import { Loader2, Mic, Square } from "lucide-react";
  * unreviewed: it is his name on the message.
  */
 
-type Recognition = {
-  start: () => void;
-  stop: () => void;
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-};
-
 export default function VoiceNote({
   houseId,
   onDraft,
@@ -39,48 +29,15 @@ export default function VoiceNote({
   onDraft: (body: string) => void;
 }) {
   const [transcript, setTranscript] = useState("");
-  const [listening, setListening] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const [supported, setSupported] = useState(false);
-  const recognition = useRef<Recognition | null>(null);
 
-  useEffect(() => {
-    const w = window as unknown as {
-      SpeechRecognition?: new () => Recognition;
-      webkitSpeechRecognition?: new () => Recognition;
-    };
-    const Impl = w.SpeechRecognition ?? w.webkitSpeechRecognition;
-    if (!Impl) return;
-
-    const r = new Impl();
-    r.continuous = true;
-    r.interimResults = false;
-    r.lang = "en-AU";
-    r.onresult = (e) => {
-      let heard = "";
-      for (let i = 0; i < e.results.length; i++) heard += e.results[i][0].transcript;
-      setTranscript(heard);
-    };
-    r.onerror = () => setListening(false);
-    r.onend = () => setListening(false);
-
-    recognition.current = r;
-    setSupported(true);
-  }, []);
-
-  const toggle = useCallback(() => {
-    const r = recognition.current;
-    if (!r) return;
-    if (listening) {
-      r.stop();
-      setListening(false);
-    } else {
-      setNote(null);
-      r.start();
-      setListening(true);
-    }
-  }, [listening]);
+  const {
+    listening,
+    supported,
+    error: micError,
+    toggle,
+  } = useDictation(setTranscript);
 
   async function writeUp() {
     setDrafting(true);
@@ -116,7 +73,7 @@ export default function VoiceNote({
       {supported && (
         <button
           type="button"
-          onClick={toggle}
+          onClick={() => toggle(transcript)}
           className={
             "mb-3 flex min-h-[64px] w-full items-center justify-center gap-3 rounded-lg border-2 text-base font-medium transition-colors " +
             (listening
@@ -125,7 +82,7 @@ export default function VoiceNote({
           }
         >
           {listening ? <Square size={20} aria-hidden="true" /> : <Mic size={22} aria-hidden="true" />}
-          {listening ? "Listening — tap to stop" : "Hold the phone up and talk"}
+          {listening ? "Listening — tap when you're done" : "Tap, then talk"}
         </button>
       )}
 
@@ -144,6 +101,12 @@ export default function VoiceNote({
         }
         className="w-full rounded-lg border border-white/10 bg-dark px-4 py-3 leading-relaxed text-white placeholder:text-white/25 focus:border-gold focus:outline-none"
       />
+
+      {micError && (
+        <p role="alert" className="mt-3 text-sm leading-relaxed text-red-300">
+          {micError}
+        </p>
+      )}
 
       {note && (
         <p role="status" className="mt-3 text-sm leading-relaxed text-gold">

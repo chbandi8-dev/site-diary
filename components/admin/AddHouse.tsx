@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Mic, Square, Wand2, X } from "lucide-react";
+import { useDictation } from "./useDictation";
 
 /**
  * Adding a house by saying it out loud.
@@ -33,17 +34,6 @@ type Draft = {
   startDate: string | null;
 };
 
-type Recognition = {
-  start: () => void;
-  stop: () => void;
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-};
-
 const EMPTY: Draft = {
   address: "",
   suburb: null,
@@ -61,52 +51,18 @@ export default function AddHouse({ stageNames }: { stageNames: string[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [transcript, setTranscript] = useState("");
-  const [listening, setListening] = useState(false);
-  const [supported, setSupported] = useState(false);
   const [reading, setReading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [duplicate, setDuplicate] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const recognition = useRef<Recognition | null>(null);
 
-  useEffect(() => {
-    const w = window as unknown as {
-      SpeechRecognition?: new () => Recognition;
-      webkitSpeechRecognition?: new () => Recognition;
-    };
-    const Impl = w.SpeechRecognition ?? w.webkitSpeechRecognition;
-    if (!Impl) return;
-
-    const r = new Impl();
-    r.continuous = true;
-    r.interimResults = false;
-    r.lang = "en-AU";
-    r.onresult = (e) => {
-      let heard = "";
-      for (let i = 0; i < e.results.length; i++) heard += e.results[i][0].transcript;
-      setTranscript(heard);
-    };
-    r.onerror = () => setListening(false);
-    r.onend = () => setListening(false);
-
-    recognition.current = r;
-    setSupported(true);
-  }, []);
-
-  const toggleMic = useCallback(() => {
-    const r = recognition.current;
-    if (!r) return;
-    if (listening) {
-      r.stop();
-      setListening(false);
-    } else {
-      setTranscript("");
-      setError(null);
-      r.start();
-      setListening(true);
-    }
-  }, [listening]);
+  const {
+    listening,
+    supported,
+    error: micError,
+    toggle: toggleMic,
+  } = useDictation(setTranscript);
 
   async function interpret() {
     setReading(true);
@@ -214,7 +170,9 @@ export default function AddHouse({ stageNames }: { stageNames: string[] }) {
         </button>
       </div>
 
-      {error && <p role="alert" className="mb-3 text-sm text-red-300">{error}</p>}
+      {(error || micError) && (
+        <p role="alert" className="mb-3 text-sm text-red-300">{error ?? micError}</p>
+      )}
 
       {!draft ? (
         <>
@@ -227,7 +185,7 @@ export default function AddHouse({ stageNames }: { stageNames: string[] }) {
           {supported && (
             <button
               type="button"
-              onClick={toggleMic}
+              onClick={() => toggleMic(transcript)}
               className={
                 "mb-3 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg border text-sm font-medium " +
                 (listening
@@ -236,7 +194,7 @@ export default function AddHouse({ stageNames }: { stageNames: string[] }) {
               }
             >
               {listening ? <Square size={15} /> : <Mic size={15} />}
-              {listening ? "Stop" : "Hold the phone and talk"}
+              {listening ? "Stop and use this" : "Tap and talk"}
             </button>
           )}
 
