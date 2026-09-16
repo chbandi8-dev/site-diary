@@ -38,6 +38,8 @@ const sendRequest = z.object({
   photoIds: z.array(z.string().uuid()).max(12).default([]),
   /// Overrides autoPublish downward only — he can always choose to hold something.
   hold: z.boolean().default(false),
+  /// Which stage this is about. Optional, and pre-filled from what is underway.
+  stageId: z.string().uuid().optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -87,7 +89,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = sendRequest.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
-  const { houseId, templateKey, slots, photoIds, hold } = parsed.data;
+  const { houseId, templateKey, slots, photoIds, hold, stageId } = parsed.data;
 
   const [house, template] = await Promise.all([
     prisma.house.findUnique({ where: { id: houseId }, select: { id: true, address: true } }),
@@ -108,6 +110,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Verified against this house rather than trusted: a picker left open on
+  // another build's page must not be able to file an update here.
+  let stage: string | null = null;
+  if (stageId) {
+    const found = await prisma.houseStage.findFirst({
+      where: { id: stageId, houseId },
+      select: { id: true },
+    });
+    stage = found?.id ?? null;
+  }
+
   const publish = template.autoPublish && !hold;
   const now = new Date();
 
@@ -117,6 +130,7 @@ export async function POST(req: NextRequest) {
         houseId,
         kind: template.kind,
         body,
+        stageId: stage,
         authorId: userId,
         templateKey: template.key,
         occurredAt: now,
@@ -131,7 +145,7 @@ export async function POST(req: NextRequest) {
       // another build cannot be attached to a published update.
       await tx.photo.updateMany({
         where: { id: { in: photoIds }, houseId, status: "ready", updateId: null },
-        data: { updateId: created.id },
+        data: { updateId: created.id, stageId: stage },
       });
     }
 

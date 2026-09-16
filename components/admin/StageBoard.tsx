@@ -2,9 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Plus, Send, Trash2, X } from "lucide-react";
+import { Camera, Check, MessageSquare, Plus, Send, Trash2, X } from "lucide-react";
 
-type Stage = { id: string; name: string; phase: string | null; status: string };
+type Stage = {
+  id: string;
+  name: string;
+  phase: string | null;
+  status: string;
+  /** Updates and photos filed against this stage. */
+  notes?: number;
+  photos?: number;
+};
 
 /**
  * The middle states, cycled by their own small button.
@@ -296,9 +304,24 @@ export default function StageBoard({
                   >
                     {s.name}
                   </span>
-                  {s.phase && (
-                    <span className="block truncate text-[11px] text-white/30">{s.phase}</span>
-                  )}
+                  <span className="flex items-center gap-2.5 truncate text-[11px] text-white/30">
+                    {s.phase}
+                    {/* Shown only when there is something there. A row of zeroes
+                        on thirty stages is noise, and it would bury the two that
+                        actually have a photo behind them. */}
+                    {Boolean(s.notes) && (
+                      <span className="flex items-center gap-1 text-white/45">
+                        <MessageSquare size={10} aria-hidden="true" />
+                        {s.notes}
+                      </span>
+                    )}
+                    {Boolean(s.photos) && (
+                      <span className="flex items-center gap-1 text-white/45">
+                        <Camera size={10} aria-hidden="true" />
+                        {s.photos}
+                      </span>
+                    )}
+                  </span>
                 </span>
               </button>
 
@@ -395,7 +418,8 @@ export default function StageBoard({
 
       <p className="mt-3 text-xs leading-relaxed text-white/35">
         Tap the tick to mark a stage done, tap it again to undo. The word on the right
-        cycles Booked, Underway and On hold — more than one stage can be underway at a time.
+        cycles Booked, Underway and On hold — more than one stage can be underway at a
+        time. Notes and photos are filed against a stage from the box above.
       </p>
     </section>
   );

@@ -30,7 +30,13 @@ export default async function HouseCapture({ params }: { params: { id: string } 
       handoverFrom: true,
       handoverTo: true,
       stages: {
-        select: { id: true, name: true, phase: true, status: true },
+        select: {
+          id: true,
+          name: true,
+          phase: true,
+          status: true,
+          _count: { select: { updates: true, photos: true } },
+        },
         orderBy: { position: "asc" },
       },
       owners: {
@@ -152,9 +158,22 @@ export default async function HouseCapture({ params }: { params: { id: string } 
         handoverTo={house.handoverTo?.toISOString() ?? null}
       />
 
-      <StageBoard stages={house.stages} houseId={house.id} />
+      <StageBoard
+        houseId={house.id}
+        stages={house.stages.map((s) => ({
+          id: s.id,
+          name: s.name,
+          phase: s.phase,
+          status: s.status,
+          notes: s._count.updates,
+          photos: s._count.photos,
+        }))}
+      />
 
-      <QuickSend houseId={house.id} />
+      <QuickSend
+        houseId={house.id}
+        stages={house.stages.map((s) => ({ id: s.id, name: s.name, status: s.status }))}
+      />
 
       <HouseLink
         houseId={house.id}

@@ -38,7 +38,13 @@ type Attached = {
  * Photos upload the moment they are taken, so the send is instant and a dropped
  * signal costs one photo rather than the whole update.
  */
-export default function QuickSend({ houseId }: { houseId: string }) {
+export default function QuickSend({
+  houseId,
+  stages,
+}: {
+  houseId: string;
+  stages: { id: string; name: string; status: string }[];
+}) {
   const router = useRouter();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [photos, setPhotos] = useState<Attached[]>([]);
@@ -49,6 +55,16 @@ export default function QuickSend({ houseId }: { houseId: string }) {
   const [undo, setUndo] = useState<{ id: string; until: number } | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const [draftKind, setDraftKind] = useState<"progress" | "delay" | "milestone">("progress");
+  /**
+   * Which stage this is about.
+   *
+   * Pre-filled with whatever is underway, because that is right almost every
+   * time and an optional field nobody fills in is an empty column. He can
+   * change it or clear it; nothing depends on it being set.
+   */
+  const [stageId, setStageId] = useState<string>(
+    () => stages.find((s) => s.status === "in_progress")?.id ?? ""
+  );
 
   useEffect(() => {
     fetch(`/api/pm/quick-send?houseId=${houseId}`)
@@ -118,6 +134,7 @@ export default function QuickSend({ houseId }: { houseId: string }) {
           templateKey: t.key,
           slots,
           photoIds: photos.filter((p) => p.state === "ready").map((p) => p.id),
+          stageId: stageId || undefined,
         }),
       });
       const data = await res.json();
@@ -153,6 +170,7 @@ export default function QuickSend({ houseId }: { houseId: string }) {
           kind: draftKind,
           hold,
           photoIds: photos.filter((p) => p.state === "ready").map((p) => p.id),
+          stageId: stageId || undefined,
         }),
       });
       const data = await res.json();
@@ -201,6 +219,34 @@ export default function QuickSend({ houseId }: { houseId: string }) {
               Undo
             </button>
           )}
+        </div>
+      )}
+
+      {/* Optional, and pre-filled. Filing an update against the stage it belongs
+          to is what lets a photo be found again in two years — and it costs him
+          nothing, because it is already right when the board is up to date. */}
+      {stages.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <label
+            htmlFor="qs-stage"
+            className="font-mono text-[10px] uppercase tracking-[0.13em] text-white/35"
+          >
+            Filed under
+          </label>
+          <select
+            id="qs-stage"
+            value={stageId}
+            onChange={(e) => setStageId(e.target.value)}
+            className="min-h-[38px] flex-1 rounded-lg border border-white/10 bg-dark px-3 text-sm text-white focus:border-gold focus:outline-none"
+          >
+            <option value="">Nothing in particular</option>
+            {stages.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+                {s.status === "in_progress" ? " (underway)" : ""}
+              </option>
+            ))}
+          </select>
         </div>
       )}
 

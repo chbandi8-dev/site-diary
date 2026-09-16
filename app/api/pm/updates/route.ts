@@ -21,6 +21,13 @@ const create = z.object({
   kind: z.enum(["progress", "delay", "milestone", "weather", "message"]).default("progress"),
   photoIds: z.array(z.string().uuid()).max(12).default([]),
   hold: z.boolean().default(false),
+  /**
+   * Which stage this is about. Optional, and usually filled in for him from
+   * whatever is underway — an update filed against nothing is still a fine
+   * update, but one filed against the frame is what makes a photo worth
+   * finding again in two years.
+   */
+  stageId: z.string().uuid().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -30,13 +37,27 @@ export async function POST(req: NextRequest) {
 
   const parsed = create.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
-  const { houseId, body, kind, photoIds, hold } = parsed.data;
+  const { houseId, body, kind, photoIds, hold, stageId } = parsed.data;
 
   const house = await prisma.house.findUnique({
     where: { id: houseId },
     select: { id: true, address: true },
   });
   if (!house) return NextResponse.json({ error: "House not found" }, { status: 404 });
+
+  // Checked against this house rather than trusted, so a stale picker on a
+  // page left open cannot file today's update against another build.
+  let stage: string | null = null;
+  if (stageId) {
+    const found = await prisma.houseStage.findFirst({
+      where: { id: stageId, houseId },
+      select: { id: true },
+    });
+    if (!found) {
+      return NextResponse.json({ error: "That stage isn't on this house." }, { status: 400 });
+    }
+    stage = found.id;
+  }
 
   // A delay always drafts, however it was written. The rule is about what the
   // message does to the reader, not about where the words came from.
@@ -49,6 +70,7 @@ export async function POST(req: NextRequest) {
         houseId,
         kind,
         body,
+        stageId: stage,
         authorId: userId,
         occurredAt: now,
         publishedAt: publish ? now : null,
@@ -58,9 +80,11 @@ export async function POST(req: NextRequest) {
     });
 
     if (photoIds.length) {
+      // The photos inherit the stage too. A photo is far more often what
+      // someone goes looking for later than the words around it.
       await tx.photo.updateMany({
         where: { id: { in: photoIds }, houseId, status: "ready", updateId: null },
-        data: { updateId: created.id },
+        data: { updateId: created.id, stageId: stage },
       });
     }
 
