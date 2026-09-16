@@ -80,7 +80,15 @@ export default async function HousesPage() {
             {withState.filter((h) => h.needsAttention).length} need something · {withState.length} active
           </p>
         </div>
-        <AddHouse stageNames={stageNames} />
+        <div className="flex flex-col items-end gap-2">
+          <AddHouse stageNames={stageNames} />
+          <Link
+            href="/admin/stages"
+            className="text-sm text-white/45 underline underline-offset-4 hover:text-white"
+          >
+            Edit the standard stages
+          </Link>
+        </div>
       </header>
 
       <ul className="flex flex-col gap-2">
