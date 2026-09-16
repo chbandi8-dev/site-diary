@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { SYDNEY_SUBURBS } from "@/lib/suburbs";
 
 /**
  * Turning "fourteen Wattle Grove, Kellyville, double storey, Priya and Arun,
@@ -41,6 +42,27 @@ Rules:
    address means their updates go to a stranger.
 6. waitingOn is what is holding the build up, in his words, shortened to a
    phrase: "the window delivery", "the certifier's sign-off".
+
+DICTATION ERRORS. This arrives from phone dictation, which does not know
+Australian place names and mangles them badly. "Wentworthville" comes back as
+"went worth ville" or "Wentworth Bill", "Toongabbie" as "tune gabby",
+"Baulkham Hills" as "balcom hills", "D'Arcy Road" as "Darcy Road".
+
+Correct these, but only where you are genuinely confident:
+
+ - A suburb that is clearly a mangled version of one in the list below should
+   be written as the real name. Judge it on how it SOUNDS, not how it is
+   spelled — that is where the error came from.
+ - If what he said does not plainly match one of them, keep what he said. A
+   wrong suburb confidently written is worse than an odd-looking one he can
+   see and fix, and the list is not every suburb in Sydney.
+ - Street names cannot be checked against a list. Leave them as heard, except
+   for obvious dictation artefacts: spell out numbers spoken as words
+   ("fourteen" becomes 14), fix "Rd"/"St" to Road/Street, and apply ordinary
+   Australian conventions — an apostrophe in D'Arcy, Mc and Mac capitalised.
+ - Where the house list below contains an address that is clearly the same one
+   misheard, prefer that spelling exactly. He is describing his own jobs, and
+   the same street will be dictated more than once.
 
 Call the record_house tool exactly once.`;
 
@@ -116,6 +138,8 @@ function cleanText(value: unknown, max = 200): string | null {
 export async function readHouseFromSpeech(opts: {
   transcript: string;
   stageNames: string[];
+  /** Addresses already on the books, so a re-dictation matches its spelling. */
+  knownAddresses?: string[];
 }): Promise<HouseDraft | null> {
   const today = new Date().toISOString().slice(0, 10);
 
@@ -137,11 +161,19 @@ export async function readHouseFromSpeech(opts: {
           `Allowed values for currentStage:`,
           opts.stageNames.map((n) => `- ${n}`).join("\n"),
           ``,
+          `Sydney suburbs, for correcting dictation:`,
+          SYDNEY_SUBURBS.join(", "),
+          ``,
+          opts.knownAddresses?.length
+            ? `Houses already on the books — prefer these spellings if one is clearly the same address:\n${opts.knownAddresses.map((a) => `- ${a}`).join("\n")}\n`
+            : ``,
           `What he said:`,
           `"""`,
           opts.transcript.trim(),
           `"""`,
-        ].join("\n"),
+        ]
+          .filter((line) => line !== ``)
+          .join("\n"),
       },
     ],
   });

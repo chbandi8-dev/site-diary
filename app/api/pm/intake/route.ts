@@ -28,10 +28,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Say a bit more and try again." }, { status: 400 });
   }
 
-  const templates = await prisma.stageTemplate.findMany({
-    select: { name: true },
-    orderBy: { position: "asc" },
-  });
+  const [templates, houses] = await Promise.all([
+    prisma.stageTemplate.findMany({
+      select: { name: true },
+      orderBy: { position: "asc" },
+    }),
+    // His own addresses are the best spelling reference there is: the same
+    // street gets dictated more than once, and a suburb he actually builds in
+    // beats any general list.
+    prisma.house.findMany({
+      select: { address: true, suburb: true },
+      orderBy: { createdAt: "desc" },
+      take: 60,
+    }),
+  ]);
   if (templates.length === 0) {
     return NextResponse.json(
       { error: "No stage templates in the database. Run the seed first." },
@@ -43,6 +53,9 @@ export async function POST(req: NextRequest) {
     const draft = await readHouseFromSpeech({
       transcript: parsed.data.transcript,
       stageNames: templates.map((t) => t.name),
+      knownAddresses: houses.map((h) =>
+        h.suburb ? `${h.address}, ${h.suburb}` : h.address
+      ),
     });
 
     if (!draft) {
