@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth-guard";
-import { AlertCircle, Clock } from "lucide-react";
 import AddHouse from "@/components/admin/AddHouse";
+import HouseList from "@/components/admin/HouseList";
 import DemoHouses from "@/components/admin/DemoHouses";
 
 export const dynamic = "force-dynamic";
@@ -91,52 +91,22 @@ export default async function HousesPage() {
         </div>
       </header>
 
-      <ul className="flex flex-col gap-2">
-        {withState.map((h) => (
-          <li key={h.id}>
-            <Link
-              href={`/admin/houses/${h.id}`}
-              className="flex items-center justify-between gap-4 rounded-lg border border-white/5 bg-dark-card px-5 py-4 transition-colors hover:border-gold/40"
-            >
-              <div className="min-w-0">
-                <span className="block truncate font-medium text-white">{h.address}</span>
-                <span className="mt-0.5 block truncate text-sm text-white/45">
-                  {h.stages.length > 0
-                    ? h.stages.map((s) => s.name).join(" · ")
-                    : "Nothing marked as underway"}
-                  {h.waitingOn && ` — waiting on ${h.waitingOn}`}
-                </span>
-              </div>
-
-              <div className="flex flex-none items-center gap-3">
-                {h._count.updates > 0 && (
-                  <span
-                    className="rounded-full bg-gold/15 px-2.5 py-1 text-xs font-medium text-gold"
-                    title="Written but not sent"
-                  >
-                    {h._count.updates} not sent
-                  </span>
-                )}
-                {h._count.ownerReports > 0 && (
-                  <span className="flex items-center gap-1.5 rounded-full bg-gold/15 px-2.5 py-1 text-xs font-medium text-gold">
-                    <AlertCircle size={13} aria-hidden="true" />
-                    {h._count.ownerReports}
-                  </span>
-                )}
-                <span
-                  className={
-                    "flex items-center gap-1.5 font-mono text-xs tabular-nums " +
-                    (h.daysQuiet >= DAYS_QUIET_BEFORE_FLAG ? "text-gold" : "text-white/35")
-                  }
-                >
-                  <Clock size={13} aria-hidden="true" />
-                  {Number.isFinite(h.daysQuiet) ? `${h.daysQuiet}d` : "never"}
-                </span>
-              </div>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <HouseList
+        rows={withState.map((h) => ({
+          id: h.id,
+          address: h.address,
+          suburb: h.suburb,
+          underway: h.stages.map((s) => s.name),
+          waitingOn: h.waitingOn,
+          // Infinity does not survive the trip to a client component, so a
+          // house that has never been updated travels as -1 rather than as a
+          // very large number that would render as "9007199254740991d".
+          daysQuiet: Number.isFinite(h.daysQuiet) ? h.daysQuiet : -1,
+          reports: h._count.ownerReports,
+          drafts: h._count.updates,
+          needsAttention: h.needsAttention,
+        }))}
+      />
 
       {withState.length === 0 && (
         <p className="rounded-lg border border-white/5 bg-dark-card px-5 py-8 text-center text-white/45">
