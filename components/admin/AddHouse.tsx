@@ -59,6 +59,7 @@ export default function AddHouse({ stageNames }: { stageNames: string[] }) {
 
   const {
     listening,
+    asking,
     supported,
     error: micError,
     toggle: toggleMic,
@@ -194,7 +195,7 @@ export default function AddHouse({ stageNames }: { stageNames: string[] }) {
               }
             >
               {listening ? <Square size={15} /> : <Mic size={15} />}
-              {listening ? "Stop and use this" : "Tap and talk"}
+              {asking ? "Allow the microphone…" : listening ? "Stop and use this" : "Tap and talk"}
             </button>
           )}
 

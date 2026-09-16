@@ -34,6 +34,7 @@ export default function VoiceNote({
 
   const {
     listening,
+    asking,
     supported,
     error: micError,
     toggle,
@@ -82,7 +83,11 @@ export default function VoiceNote({
           }
         >
           {listening ? <Square size={20} aria-hidden="true" /> : <Mic size={22} aria-hidden="true" />}
-          {listening ? "Listening — tap when you're done" : "Tap, then talk"}
+          {asking
+            ? "Allow the microphone to continue…"
+            : listening
+              ? "Listening — tap when you're done"
+              : "Tap, then talk"}
         </button>
       )}
 

@@ -20,6 +20,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * None of this is fixable in the API — it is worked around here, and the
  * typing fallback stays visible throughout, because on some phones it simply
  * will not work at all and the keyboard's own microphone will.
+ *
+ * And a fourth, which is why the button appeared dead on his phone: starting
+ * recognition does not reliably ask for the microphone. On several mobile
+ * browsers it fails outright rather than prompting, so the permission dialog
+ * he needed to accept never appeared. Asking through getUserMedia first always
+ * prompts, and turns "nothing happened" into a dialog with an Allow button.
  */
 
 type Recognition = {
@@ -37,6 +43,31 @@ type Recognition = {
   onerror: ((e: { error?: string }) => void) | null;
   onend: (() => void) | null;
 };
+
+/**
+ * Asks for the microphone, and therefore raises the browser's own permission
+ * dialog. The stream is stopped immediately — the speech engine opens its own,
+ * and leaving this one running would sit a recording indicator on his screen
+ * for the rest of the session.
+ */
+async function requestMicrophone(): Promise<string | null> {
+  if (!navigator.mediaDevices?.getUserMedia) return null;
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((track) => track.stop());
+    return null;
+  } catch (cause) {
+    const name = (cause as { name?: string })?.name;
+    if (name === "NotAllowedError" || name === "SecurityError") {
+      return "The microphone is blocked for this site. Tap the padlock beside the address bar, then Permissions, then allow the Microphone — or just type it in below.";
+    }
+    if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+      return "No microphone was found on this device. Type it in below instead.";
+    }
+    return "Couldn't get to the microphone. Type it in below instead.";
+  }
+}
 
 /** Said plainly, with what to do instead. */
 function explain(code: string | undefined): string | null {
@@ -60,6 +91,10 @@ function explain(code: string | undefined): string | null {
 
 export function useDictation(onText: (text: string) => void) {
   const [listening, setListening] = useState(false);
+  // True only while the permission dialog is up. Without it the button sits
+  // unchanged behind the dialog, which on a first tap reads as nothing having
+  // happened — the exact impression this whole change exists to remove.
+  const [asking, setAsking] = useState(false);
   const [supported, setSupported] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -132,7 +167,7 @@ export function useDictation(onText: (text: string) => void) {
     };
   }, [onText]);
 
-  const toggle = useCallback((current: string) => {
+  const toggle = useCallback(async (current: string) => {
     const r = recognition.current;
     if (!r) return;
 
@@ -148,6 +183,18 @@ export function useDictation(onText: (text: string) => void) {
     }
 
     setError(null);
+
+    // Before anything else, so the browser actually asks. This is the tap that
+    // raises the Allow dialog; until it is accepted there is no point starting
+    // recognition, and starting it first is what made the button look dead.
+    setAsking(true);
+    const denied = await requestMicrophone();
+    setAsking(false);
+    if (denied) {
+      setError(denied);
+      return;
+    }
+
     // Anything already typed or said is kept, so the button can be used again
     // to add a sentence rather than starting over.
     banked.current = current.trim();
@@ -161,5 +208,5 @@ export function useDictation(onText: (text: string) => void) {
     }
   }, []);
 
-  return { listening, supported, error, toggle, clearError: () => setError(null) };
+  return { listening, asking, supported, error, toggle, clearError: () => setError(null) };
 }
