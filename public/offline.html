@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>No signal</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0; min-height: 100dvh; display: grid; place-items: center;
+        padding: 2rem 1.5rem; background: #1C1C1E; color: #fff;
+        font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, sans-serif;
+      }
+      .card { max-width: 26rem; text-align: center; }
+      h1 { font-size: 1.5rem; margin: 0 0 .75rem; }
+      p { color: rgba(255,255,255,.55); margin: 0 0 1rem; }
+      button {
+        min-height: 48px; padding: 0 1.5rem; border: 0; border-radius: .5rem;
+        background: #C9A84C; color: #1C1C1E; font: inherit; font-weight: 500;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>No signal out here</h1>
+      <p>
+        Nothing you'd already written has been lost — anything waiting to send goes
+        out on its own the moment you're back in range.
+      </p>
+      <button onclick="location.reload()">Try again</button>
+    </div>
+  </body>
+</html>

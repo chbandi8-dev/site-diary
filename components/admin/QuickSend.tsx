@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { whatsAppLink } from "@/lib/phone";
+import { send as outboxSend } from "@/lib/outbox";
 import { useRouter } from "next/navigation";
 import { Camera, Check, ImagePlus, Loader2, RotateCw, X, MessageCircle } from "lucide-react";
 import { uploadPhoto } from "@/lib/capture/photo";
@@ -140,19 +141,29 @@ export default function QuickSend({
   async function send(t: Template, slots: Record<string, string>) {
     setSending(true);
     try {
-      const res = await fetch("/api/pm/quick-send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const outcome = await outboxSend(
+        "/api/pm/quick-send",
+        {
           houseId,
           templateKey: t.key,
           slots,
           photoIds: photos.filter((p) => p.state === "ready").map((p) => p.id),
           stageId: stageId || undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "That didn't send.");
+        },
+        t.label
+      );
+
+      if (!outcome.ok) {
+        // Queued is not failed. The banner above says it is waiting, and the
+        // form clears — retyping it later is exactly what this exists to stop.
+        setResult({ ok: outcome.queued, text: outcome.error });
+        if (outcome.queued) {
+          setPhotos([]);
+          setOpen(null);
+        }
+        return;
+      }
+      const data = outcome.data as { message: string; body?: string; published?: boolean; id: string };
 
       setResult({ ok: true, text: data.message });
       setLastSent(data.body ?? null);
@@ -176,20 +187,28 @@ export default function QuickSend({
     setSending(true);
     setResult(null);
     try {
-      const res = await fetch("/api/pm/updates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const outcome = await outboxSend(
+        "/api/pm/updates",
+        {
           houseId,
           body: draft,
           kind: draftKind,
-          hold,
           photoIds: photos.filter((p) => p.state === "ready").map((p) => p.id),
           stageId: stageId || undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "That didn't send.");
+          hold,
+        },
+        "Your update"
+      );
+
+      if (!outcome.ok) {
+        setResult({ ok: outcome.queued, text: outcome.error });
+        if (outcome.queued) {
+          setDraft(null);
+          setPhotos([]);
+        }
+        return;
+      }
+      const data = outcome.data as { message: string; published?: boolean; id: string };
 
       setResult({ ok: true, text: data.message });
       setLastSent(draft);
