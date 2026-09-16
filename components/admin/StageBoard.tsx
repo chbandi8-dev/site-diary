@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, Check, MessageSquare, Plus, Send, Trash2, X } from "lucide-react";
 
@@ -69,6 +69,21 @@ export default function StageBoard({
   houseId: string;
 }) {
   const router = useRouter();
+
+  /**
+   * The board he sees, updated before the server has heard about it.
+   *
+   * Every tap used to re-render the page from the server — which on a phone,
+   * on a page that loads a build's whole history, is most of a second of
+   * nothing happening. Ticking four stages felt broken. The tick now moves
+   * immediately and the request goes out behind it.
+   *
+   * Re-synced whenever fresh server data arrives, so anything changed
+   * elsewhere still lands here.
+   */
+  const [local, setLocal] = useState(stages);
+  useEffect(() => setLocal(stages), [stages]);
+
   const [busy, setBusy] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<{ stage: string; body: string } | null>(null);
@@ -81,23 +96,51 @@ export default function StageBoard({
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(false);
 
+  /**
+   * Catches the page up in the background.
+   *
+   * Debounced, because the counts and the capture box's stage picker are
+   * rendered on the server and do need to follow along — just not between one
+   * tap and the next. Refreshing on every tap is what made this slow in the
+   * first place.
+   */
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function refreshSoon() {
+    if (settle.current) clearTimeout(settle.current);
+    settle.current = setTimeout(() => router.refresh(), 1500);
+  }
+
   async function setStatus(stage: Stage, status: string) {
-    setBusy(stage.id);
+    const previous = stage.status;
+
+    // Moves now. The request is the slow part and he should never wait on it.
+    setLocal((rows) => rows.map((r) => (r.id === stage.id ? { ...r, status } : r)));
     setError(null);
+
     try {
       const res = await fetch(`/api/pm/stages/${stage.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error);
+
       const data = await res.json().catch(() => ({}));
       // Offered, never sent on his behalf. Marking a stage done is a record
       // keeping action; emailing twenty-five owners is not, and conflating
       // them would make him hesitant to keep the board accurate.
       if (data?.suggested) setDraft({ stage: data.stageName, body: data.suggested });
-      router.refresh();
-    } finally {
-      setBusy(null);
+
+      refreshSoon();
+    } catch (cause) {
+      // Put it back. A tick that stayed on after a failed save would be worse
+      // than a slow one — he would believe the board and it would be wrong.
+      setLocal((rows) => rows.map((r) => (r.id === stage.id ? { ...r, status: previous } : r)));
+      setError(
+        cause instanceof Error && cause.message
+          ? cause.message
+          : "That didn't save — check your signal and try again."
+      );
     }
   }
 
@@ -139,11 +182,16 @@ export default function StageBoard({
   async function removeStage(stage: Stage) {
     setBusy(stage.id);
     setError(null);
+    const kept = local;
+    setLocal((rows) => rows.filter((r) => r.id !== stage.id));
     try {
       const res = await fetch(`/api/pm/stages/${stage.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error((await res.json()).error ?? "That didn't delete.");
-      router.refresh();
+      refreshSoon();
     } catch (cause) {
+      // Refused, usually because something is filed against it. Put it back
+      // where it was rather than leaving a gap he has to reload to explain.
+      setLocal(kept);
       setError(cause instanceof Error ? cause.message : "That didn't delete.");
     } finally {
       setBusy(null);
@@ -174,13 +222,13 @@ export default function StageBoard({
 
   // Everything active, plus a little either side. The full 31 is a wall he does
   // not need while standing on a slab.
-  const active = stages.filter((s) => s.status === "in_progress" || s.status === "on_hold");
-  const firstActive = stages.findIndex((s) => s.status === "in_progress");
-  const nearby = stages.slice(
-    Math.max(0, (firstActive === -1 ? stages.findIndex((s) => s.status !== "complete") : firstActive) - 1),
+  const active = local.filter((s) => s.status === "in_progress" || s.status === "on_hold");
+  const firstActive = local.findIndex((s) => s.status === "in_progress");
+  const nearby = local.slice(
+    Math.max(0, (firstActive === -1 ? local.findIndex((s) => s.status !== "complete") : firstActive) - 1),
     Math.max(4, (firstActive === -1 ? 4 : firstActive + 4))
   );
-  const shown = open ? stages : Array.from(new Set([...active, ...nearby]));
+  const shown = open ? local : Array.from(new Set([...active, ...nearby]));
 
   return (
     <section className="mt-10">
@@ -212,7 +260,7 @@ export default function StageBoard({
             onClick={() => setOpen(!open)}
             className="text-sm text-white/50 underline underline-offset-4 hover:text-white"
           >
-            {open ? "Show less" : `All ${stages.length}`}
+            {open ? "Show less" : `All ${local.length}`}
           </button>
         </div>
       </div>
@@ -384,7 +432,7 @@ export default function StageBoard({
                 className="rounded-lg border border-white/10 bg-dark px-4 py-2.5 text-white focus:border-gold focus:outline-none"
               >
                 <option value="">At the very end</option>
-                {stages.map((s) => (
+                {local.map((s) => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>
