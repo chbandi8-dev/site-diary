@@ -42,6 +42,7 @@ export default async function HouseCapture({ params }: { params: { id: string } 
       owners: {
         select: {
           revokedAt: true,
+          lastSeenAt: true,
           owner: { select: { id: true, name: true, email: true, phone: true } },
         },
       },
@@ -194,6 +195,7 @@ export default async function HouseCapture({ params }: { params: { id: string } 
           name: o.owner.name,
           email: o.owner.email,
           phone: o.owner.phone,
+          lastSeenAt: o.lastSeenAt?.toISOString() ?? null,
           revoked: Boolean(o.revokedAt),
         }))}
       />

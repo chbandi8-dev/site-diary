@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
   LayoutDashboard, LogOut, ChevronRight, X,
-  HardHat, Inbox, CalendarCheck, Globe,
+  HardHat, Inbox, CalendarCheck, Globe, Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +22,7 @@ const siteDiary = [
   { href: "/admin/houses", icon: HardHat, label: "Houses" },
   { href: "/admin/reports", icon: Inbox, label: "From owners" },
   { href: "/admin/friday", icon: CalendarCheck, label: "Friday email" },
+  { href: "/admin/broadcast", icon: Megaphone, label: "Tell everyone" },
 ];
 
 const website = [{ href: "/admin/website", icon: Globe, label: "Website" }];

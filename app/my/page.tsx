@@ -24,9 +24,14 @@ export default async function MyBuild() {
   const house = await getHouse(access.houseId);
   if (!house) redirect("/my/no-access");
 
-  await recordVisit(access.linkId);
-
   const viewer = await currentViewer(access.houseId);
+
+  // After the viewer is resolved, so the visit can be attributed to a person
+  // where there is one.
+  await recordVisit(
+    access.linkId,
+    viewer ? { houseId: access.houseId, ownerId: viewer.id } : undefined
+  );
 
   const [stages, updates, reports, builder, decisions, variations, documents, wetDays, defects] =
     await Promise.all([

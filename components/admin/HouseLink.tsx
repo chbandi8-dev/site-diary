@@ -8,6 +8,8 @@ import { Check, Copy, Link2, MailX, RefreshCw, Undo2, Pencil, MessageCircle } fr
 type Registered = {
   ownerId: string;
   phone: string | null;
+  /** ISO date of their last visit, or null if they have never opened it. */
+  lastSeenAt: string | null;
   name: string;
   email: string | null;
   revoked: boolean;
@@ -25,6 +27,29 @@ type Registered = {
  * looked up later; if it is needed again he issues a fresh one, which revokes
  * the old.
  */
+const STALE_DAYS = 14;
+
+function daysSince(iso: string | null): number | null {
+  if (!iso) return null;
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+}
+
+/** True when it is worth his attention, not merely worth stating. */
+function lastSeenTone(iso: string | null): boolean {
+  const days = daysSince(iso);
+  return days === null || days >= STALE_DAYS;
+}
+
+function lastSeenLabel(iso: string | null): string {
+  const days = daysSince(iso);
+  if (days === null) return "Hasn't opened their page yet";
+  if (days === 0) return "Opened their page today";
+  if (days === 1) return "Opened their page yesterday";
+  if (days < 14) return `Opened their page ${days} days ago`;
+  if (days < 60) return `Last opened ${Math.floor(days / 7)} weeks ago`;
+  return `Last opened ${Math.floor(days / 30)} months ago`;
+}
+
 export default function HouseLink({
   houseId,
   address,
@@ -229,6 +254,17 @@ export default function HouseLink({
                     <span className="block truncate text-sm text-white/45">
                       {r.email ?? "No email"}
                       {r.phone ? ` · ${r.phone}` : ""}
+                    </span>
+                    {/* Whether they are actually reading any of it. An owner
+                        who stopped opening it three weeks ago is the one about
+                        to ring, and he had no way to know. */}
+                    <span
+                      className={
+                        "mt-0.5 block text-xs " +
+                        (lastSeenTone(r.lastSeenAt) ? "text-gold" : "text-white/35")
+                      }
+                    >
+                      {lastSeenLabel(r.lastSeenAt)}
                     </span>
                     {r.revoked && (
                       <span className="mt-1 block font-mono text-[10px] uppercase tracking-[0.12em] text-white/35">

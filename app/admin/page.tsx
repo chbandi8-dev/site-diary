@@ -4,7 +4,7 @@ import { requireStaff } from "@/lib/auth-guard";
 import { money } from "@/lib/money";
 import {
   HardHat, Inbox, Clock, FileSignature, CloudRain, CalendarCheck,
-  ArrowRight, Check, CircleAlert, PencilLine,
+  ArrowRight, Check, CircleAlert, PencilLine, EyeOff,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -73,6 +73,10 @@ export default async function Today() {
         where: { workLost: true, date: { gte: weekAgo } },
         select: { id: true },
       },
+      owners: {
+        where: { revokedAt: null },
+        select: { lastSeenAt: true, owner: { select: { name: true, email: true } } },
+      },
       _count: {
         select: {
           updates: { where: { publishedAt: null, deletedAt: null } },
@@ -125,6 +129,28 @@ export default async function Today() {
         label: `${h._count.updates} update${h._count.updates === 1 ? "" : "s"} never sent`,
         detail: "Written but still sitting as a draft",
         icon: PencilLine,
+      });
+    }
+
+    // Somebody he has been writing to who has stopped reading. Ranked below
+    // his own overdue work: it is a nudge, not a job, and an owner who is not
+    // looking is a phone call he can get ahead of rather than one he has caused.
+    for (const link of h.owners) {
+      if (!link.owner.email) continue;
+      const days = link.lastSeenAt
+        ? Math.floor((now - link.lastSeenAt.getTime()) / 86_400_000)
+        : null;
+      if (days !== null && days < 21) continue;
+      tasks.push({
+        houseId: h.id,
+        address: h.address,
+        urgency: 5,
+        label:
+          days === null
+            ? `${link.owner.name} has never opened their page`
+            : `${link.owner.name} hasn't looked in ${Math.floor(days / 7)} weeks`,
+        detail: "Worth a call or a photo — they may not know what's happening",
+        icon: EyeOff,
       });
     }
 

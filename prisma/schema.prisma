@@ -407,11 +407,18 @@ model AccessLink {
 /// indexed rather than an implicit many-to-many. Houses are sold mid-build and
 /// couples separate: `revokedAt` — not session expiry — is where access ends.
 model HouseOwner {
-  houseId   String    @map("house_id") @db.Uuid
-  ownerId   String    @map("owner_id") @db.Uuid
-  role      String    @default("owner")
-  invitedAt DateTime  @default(now()) @map("invited_at") @db.Timestamptz(3)
-  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  houseId    String    @map("house_id") @db.Uuid
+  ownerId    String    @map("owner_id") @db.Uuid
+  role       String    @default("owner")
+  invitedAt  DateTime  @default(now()) @map("invited_at") @db.Timestamptz(3)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+  /// When this person last opened their build page.
+  ///
+  /// Per person rather than per link, because the link is shared and the
+  /// question he actually has is "has Priya seen any of this" — an owner who
+  /// stopped opening it three weeks ago is the one about to ring, and the
+  /// house-level counter cannot tell him which of the two it was.
+  lastSeenAt DateTime? @map("last_seen_at") @db.Timestamptz(3)
 
   house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
   owner Owner @relation(fields: [ownerId], references: [id], onDelete: Cascade)

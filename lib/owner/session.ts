@@ -87,11 +87,32 @@ export async function redeemToken(token: string): Promise<HouseAccess | null> {
  * anything is ever disputed. Throttled to once an hour per link so it counts
  * visits rather than renders.
  */
-export async function recordVisit(linkId: string): Promise<void> {
+export async function recordVisit(
+  linkId: string,
+  // Known only once they have registered. Before that the visit still counts
+  // against the link — somebody is reading it, he just cannot say who.
+  seen?: { houseId: string; ownerId: string }
+): Promise<void> {
   const cutoff = new Date(Date.now() - VISIT_THROTTLE_MS);
+  const now = new Date();
+
   await prisma.accessLink.updateMany({
     where: { id: linkId, OR: [{ lastUsedAt: null }, { lastUsedAt: { lt: cutoff } }] },
-    data: { lastUsedAt: new Date(), useCount: { increment: 1 } },
+    data: { lastUsedAt: now, useCount: { increment: 1 } },
+  });
+
+  if (!seen) return;
+
+  // Throttled on its own clock rather than the link's. Two owners sharing one
+  // link would otherwise have the second one's visit swallowed by the first's
+  // throttle, and "Arun has never opened it" would be wrong.
+  await prisma.houseOwner.updateMany({
+    where: {
+      houseId: seen.houseId,
+      ownerId: seen.ownerId,
+      OR: [{ lastSeenAt: null }, { lastSeenAt: { lt: cutoff } }],
+    },
+    data: { lastSeenAt: now },
   });
 }
 
