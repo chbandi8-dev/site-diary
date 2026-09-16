@@ -1,5 +1,10 @@
 # Setting up Site Diary
 
+> Going live with a real client? Read
+> **[BEFORE-THE-FIRST-REAL-CLIENT.md](./BEFORE-THE-FIRST-REAL-CLIENT.md)** as
+> well — secrets to rotate, the variables that fail silently, and the backup
+> that does not exist until somebody makes it.
+
 Roughly two hours of wiring, most of it waiting on DNS.
 
 Order matters in two places: **start the DNS verification first** because it is

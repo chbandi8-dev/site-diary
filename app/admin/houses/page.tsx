@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth-guard";
 import AddHouse from "@/components/admin/AddHouse";
 import HouseList from "@/components/admin/HouseList";
-import DemoHouses from "@/components/admin/DemoHouses";
+import DemoHouses, { ExportEverything } from "@/components/admin/DemoHouses";
 
 export const dynamic = "force-dynamic";
 
@@ -116,6 +116,8 @@ export default async function HousesPage() {
       )}
 
       <DemoHouses present={demoPresent} />
+
+      <ExportEverything />
     </div>
   );
 }

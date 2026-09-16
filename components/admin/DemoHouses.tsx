@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { FlaskConical, Loader2 } from "lucide-react";
+import { Download, FlaskConical, Loader2 } from "lucide-react";
 
 /**
  * Two example houses, one tap.
@@ -65,6 +65,38 @@ export default function DemoHouses({ present }: { present: boolean }) {
                 ? "Remove the example houses"
                 : "Add two example houses"}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A copy of everything, kept somewhere that is not the database.
+ *
+ * Sits beside the example houses because both are housekeeping rather than
+ * daily work — and because this is the one on the page that matters after the
+ * examples are gone.
+ */
+export function ExportEverything() {
+  return (
+    <div className="mt-3 rounded-lg border border-dashed border-white/10 bg-dark-card p-5">
+      <div className="flex items-start gap-3">
+        <Download size={15} aria-hidden="true" className="mt-0.5 flex-none text-white/30" />
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm text-white/80">Back everything up</h2>
+          <p className="mt-1 max-w-prose text-xs leading-relaxed text-white/40">
+            Downloads every house, owner, update, variation and defect as one file.
+            Keep it in Google Drive. Worth doing monthly — this database is the only
+            copy of the record a disputed claim would depend on.
+          </p>
+          <a
+            href="/api/pm/export"
+            className="mt-4 inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-white/15 px-5 text-sm text-white/70 hover:border-white/35"
+          >
+            <Download size={14} aria-hidden="true" />
+            Download a copy
+          </a>
         </div>
       </div>
     </div>
