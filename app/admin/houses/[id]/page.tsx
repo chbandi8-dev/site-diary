@@ -63,6 +63,7 @@ export default async function HouseCapture({ params }: { params: { id: string } 
           answer: true,
         },
         orderBy: [{ status: "asc" }, { askedAt: "desc" }],
+        take: 25,
       },
       variations: {
         select: {
@@ -78,11 +79,13 @@ export default async function HouseCapture({ params }: { params: { id: string } 
           approvedBy: { select: { name: true } },
         },
         orderBy: { createdAt: "desc" },
+        take: 25,
       },
       documents: {
         where: { status: "ready" },
         select: { id: true, title: true, category: true, bytes: true, uploadedAt: true },
         orderBy: [{ category: "asc" }, { uploadedAt: "desc" }],
+        take: 40,
       },
       weatherDays: {
         where: { workLost: true },
@@ -102,6 +105,7 @@ export default async function HouseCapture({ params }: { params: { id: string } 
           resolvedAt: true,
         },
         orderBy: [{ status: "asc" }, { raisedAt: "asc" }],
+        take: 60,
       },
       forecasts: {
         select: { from: true, to: true, reason: true, createdAt: true, notifiedAt: true },
