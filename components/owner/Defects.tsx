@@ -1,4 +1,5 @@
 import { Check } from "lucide-react";
+import AddDefect from "./AddDefect";
 
 type Defect = {
   id: string;
@@ -23,8 +24,19 @@ type Defect = {
  * it looks: an owner seeing six items the builder found before they did reads
  * the whole list differently.
  */
-export default function Defects({ defects }: { defects: Defect[] }) {
-  if (defects.length === 0) return null;
+export default function Defects({
+  defects,
+  canAdd,
+}: {
+  defects: Defect[];
+  /**
+   * Whether this house is at the point where a walk-through list makes sense.
+   * Offered with an empty list too — the first item is the one somebody is
+   * standing in front of right now.
+   */
+  canAdd: boolean;
+}) {
+  if (defects.length === 0 && !canAdd) return null;
 
   const done = defects.filter((d) => d.status === "resolved");
   const outstanding = defects.filter((d) => d.status !== "resolved");
@@ -34,9 +46,13 @@ export default function Defects({ defects }: { defects: Defect[] }) {
     <section className="mt-12">
       <h2 className="mb-1 font-display text-2xl tracking-tight">Your defects list</h2>
       <p className="mb-5 max-w-prose text-[15px] leading-relaxed text-text/65">
-        {done.length} of {defects.length} done.
-        {theirs > 0 && ` ${theirs} of these came from your walk-through`}
-        {theirs > 0 && defects.length - theirs > 0 && `, the rest we picked up ourselves`}.
+        {defects.length === 0
+          ? "Nothing on the list yet. As you walk through, add anything you notice and it goes straight to your builder."
+          : `${done.length} of ${defects.length} done.` +
+            (theirs > 0 ? ` ${theirs} of these came from your walk-through` : "") +
+            (theirs > 0 && defects.length - theirs > 0
+              ? ", the rest we picked up ourselves."
+              : ".")}
       </p>
 
       {outstanding.length > 0 && (
@@ -87,6 +103,8 @@ export default function Defects({ defects }: { defects: Defect[] }) {
           </ul>
         </div>
       )}
+
+      {canAdd && <AddDefect />}
     </section>
   );
 }

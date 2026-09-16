@@ -1,26 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { currentHouse, currentViewer } from "@/lib/owner/session";
-import { createReport, photoBelongsToHouse } from "@/lib/db/owner";
+import { createOwnerDefect, photoBelongsToHouse } from "@/lib/db/owner";
 import { notifyStaffOfReport } from "@/lib/owner/notify-staff";
-import { z } from "zod";
 import { overLimit, wrongOrigin } from "@/lib/owner/guard";
+import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Someone raising a question, an issue, or maintenance.
+ * An owner adding to the defects list.
  *
- * Registration is required first — not for security, but because a report with
- * nobody attached is one he cannot reply to, which is worse than no report.
+ * They are walking the house with a phone, adding one item at a time. Making
+ * them file a general "report" that he then retypes onto the punch list is two
+ * people doing the same job, and their words get lost in the translation.
  *
- * House and author both come from cookies this server set. Neither is read from
- * the request body, so nothing a caller sends can file a report against another
- * build or in another person's name.
+ * House and author come from cookies this server set, never the request, so
+ * nothing here can put an item on another build's list or in another person's
+ * name.
  */
 
 const body = z.object({
-  kind: z.enum(["question", "issue", "maintenance"]),
-  body: z.string().trim().min(1).max(4000),
+  description: z.string().trim().min(1).max(600),
+  location: z.string().trim().max(120).optional(),
   photoId: z.string().uuid().optional(),
 });
 
@@ -37,38 +38,39 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Same budget as reports: a walk-through produces a lot of items in one
+  // sitting, and each one emails him.
   const limited = await overLimit(access.houseId, "reports");
   if (limited) return limited;
 
   const viewer = await currentViewer(access.houseId);
   if (!viewer) {
     return NextResponse.json(
-      { error: "Add your name and email first, so your builder knows who to reply to." },
+      { error: "Add your name and email first, so your builder knows who found it." },
       { status: 403 }
     );
   }
 
   const parsed = body.safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: "Please describe what you've noticed." }, { status: 400 });
+    return NextResponse.json({ error: "Describe what needs attention." }, { status: 400 });
   }
 
-  // A photo may only be attached if it belongs to this house, so a report
-  // cannot be used to pull an image out of somebody else's build.
   if (parsed.data.photoId && !(await photoBelongsToHouse(access.houseId, parsed.data.photoId))) {
     return NextResponse.json({ error: "That photo isn't from your build." }, { status: 400 });
   }
 
-  const report = await createReport(access.houseId, viewer.id, parsed.data);
+  const { defect, reportId } = await createOwnerDefect(access.houseId, viewer.id, parsed.data);
 
-  // He hears about it now, not whenever a scheduled job next runs.
   await notifyStaffOfReport({
-    reportId: report.id,
+    reportId,
     houseId: access.houseId,
-    kind: parsed.data.kind,
-    body: parsed.data.body,
+    kind: "maintenance",
+    body: parsed.data.location
+      ? `${parsed.data.location}: ${parsed.data.description}`
+      : parsed.data.description,
     fromName: viewer.name,
   });
 
-  return NextResponse.json(report, { status: 201 });
+  return NextResponse.json({ id: defect.id, reference: defect.reference }, { status: 201 });
 }

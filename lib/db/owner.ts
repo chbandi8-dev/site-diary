@@ -459,3 +459,78 @@ export async function getDefects(houseId: string) {
     orderBy: [{ status: "asc" }, { raisedAt: "asc" }],
   });
 }
+
+/**
+ * An owner putting something on the defects list themselves.
+ *
+ * During the handover fortnight they walk the house with a notepad. What they
+ * are producing is list items, not questions — and making them file a
+ * "question" that he then retypes as a defect wastes his time and loses their
+ * words on the way.
+ *
+ * Two rows on purpose, which is what the schema anticipated with
+ * `OwnerReport.defectId`:
+ *
+ *   - the Defect is the work item, and appears on the punch list for both of
+ *     them immediately;
+ *   - the OwnerReport is the conversation about it, which is what gives him
+ *     somewhere to reply and them somewhere to read the answer.
+ *
+ * The report also carries the photo and is what notifies him, so an owner-
+ * raised defect reaches him through exactly the same path as everything else
+ * they send.
+ */
+export async function createOwnerDefect(
+  houseId: string,
+  ownerId: string,
+  input: { description: string; location?: string; photoId?: string }
+) {
+  const count = await prisma.defect.count({ where: { houseId } });
+
+  const defect = await prisma.defect.create({
+    data: {
+      houseId,
+      reference: String(count + 1),
+      description: input.description,
+      location: input.location || null,
+      raisedByOwner: true,
+    },
+    select: { id: true, reference: true },
+  });
+
+  const report = await prisma.ownerReport.create({
+    data: {
+      houseId,
+      ownerId,
+      // Their own walk-through item. `maintenance` is the kind he already
+      // recognises as "something to put right", and it sets the subject line
+      // the notification uses.
+      kind: "maintenance",
+      body: input.location
+        ? `${input.location}: ${input.description}`
+        : input.description,
+      photoId: input.photoId,
+      defectId: defect.id,
+    },
+    select: { id: true },
+  });
+
+  return { defect, reportId: report.id };
+}
+
+/** The staff to tell. Kept here so owner routes never reach for the users table. */
+export async function staffForNotification() {
+  return prisma.user.findMany({
+    where: { role: { in: ["admin", "pm"] } },
+    select: { id: true, name: true, email: true },
+  });
+}
+
+/** The house's address, for a subject line. */
+export async function houseAddress(houseId: string): Promise<string> {
+  const house = await prisma.house.findUnique({
+    where: { id: houseId },
+    select: { address: true },
+  });
+  return house?.address ?? "Your build";
+}

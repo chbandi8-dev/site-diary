@@ -109,7 +109,18 @@ export default async function MyBuild() {
       {/* In the handover fortnight this is why they open the page at all, so
           it sits directly under the timeline rather than with the reference
           material below. */}
-      <Defects defects={defects} />
+      {/* Offered from practical completion onward, and any time a list already
+          exists — the walk-through is when an owner is actually holding a phone
+          in one hand and looking at an architrave. */}
+      <Defects
+        defects={defects}
+        canAdd={
+          Boolean(viewer) &&
+          (defects.length > 0 ||
+            house.status === "practical_completion" ||
+            Boolean(house.handedOverAt))
+        }
+      />
 
       {/* Below the timeline: these answer questions rather than report news,
           and an owner opening the link wants today's photo first. */}
