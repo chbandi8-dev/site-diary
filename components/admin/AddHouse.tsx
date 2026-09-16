@@ -183,34 +183,39 @@ export default function AddHouse({ stageNames }: { stageNames: string[] }) {
             Handover looking like March, April next year.&rdquo;
           </p>
 
+          {/* The box first: the keyboard's own microphone is the better tool on
+              a phone, and the only one that works on every device. */}
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="intake" className={label}>
+              Tap here, then use the microphone on your keyboard
+            </label>
+            <textarea
+              id="intake"
+              rows={5}
+              value={transcript}
+              onChange={(e) => setTranscript(e.target.value)}
+              placeholder="…or just type it."
+              className={field + " text-base"}
+            />
+          </div>
+
           {supported && (
             <button
               type="button"
               onClick={() => toggleMic(transcript)}
               className={
-                "mb-3 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg border text-sm font-medium " +
-                (listening
-                  ? "border-gold bg-gold/15 text-gold"
-                  : "border-white/15 text-white/70 hover:border-white/35")
+                "mt-2 flex min-h-[40px] items-center gap-2 text-sm transition-colors " +
+                (listening ? "text-gold" : "text-white/45 hover:text-white")
               }
             >
-              {listening ? <Square size={15} /> : <Mic size={15} />}
-              {asking ? "Allow the microphone…" : listening ? "Stop and use this" : "Tap and talk"}
+              {listening ? <Square size={14} /> : <Mic size={14} />}
+              {asking
+                ? "Allow the microphone…"
+                : listening
+                  ? "Stop and use this"
+                  : "Or record straight into the page"}
             </button>
           )}
-
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="intake" className={label}>
-              {supported ? "Or type it — the keyboard mic works too" : "Type it, or use the microphone on your keyboard"}
-            </label>
-            <textarea
-              id="intake"
-              rows={4}
-              value={transcript}
-              onChange={(e) => setTranscript(e.target.value)}
-              className={field}
-            />
-          </div>
 
           <button
             type="button"

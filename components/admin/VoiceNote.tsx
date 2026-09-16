@@ -71,41 +71,46 @@ export default function VoiceNote({
         Say what happened
       </h2>
 
-      {supported && (
-        <button
-          type="button"
-          onClick={() => toggle(transcript)}
-          className={
-            "mb-3 flex min-h-[64px] w-full items-center justify-center gap-3 rounded-lg border-2 text-base font-medium transition-colors " +
-            (listening
-              ? "border-gold bg-gold/20 text-gold"
-              : "border-dashed border-white/15 text-white/70 hover:border-gold/50 hover:text-white")
-          }
-        >
-          {listening ? <Square size={20} aria-hidden="true" /> : <Mic size={22} aria-hidden="true" />}
-          {asking
-            ? "Allow the microphone to continue…"
-            : listening
-              ? "Listening — tap when you're done"
-              : "Tap, then talk"}
-        </button>
-      )}
+      {/*
+        The box comes first, and the in-page microphone is offered underneath
+        it rather than above.
 
+        On a phone the keyboard's own microphone is the better tool anyway —
+        it is Google's or Apple's speech engine rather than the browser's, it
+        handles accents better, and it works on devices where the page is never
+        given microphone access at all. Leading with a button that fails on
+        some phones, and burying the thing that always works, had it exactly
+        backwards.
+      */}
       <label htmlFor={`vn-${houseId}`} className="sr-only">
         What happened on site
       </label>
       <textarea
         id={`vn-${houseId}`}
-        rows={3}
+        rows={4}
         value={transcript}
         onChange={(e) => setTranscript(e.target.value)}
-        placeholder={
-          supported
-            ? "…or type it, or use the microphone on your keyboard."
-            : "Tap here and use the microphone on your keyboard, or just type it."
-        }
-        className="w-full rounded-lg border border-white/10 bg-dark px-4 py-3 leading-relaxed text-white placeholder:text-white/25 focus:border-gold focus:outline-none"
+        placeholder="Tap here, then use the microphone on your keyboard — or type it."
+        className="w-full rounded-lg border border-white/10 bg-dark px-4 py-3 text-base leading-relaxed text-white placeholder:text-white/30 focus:border-gold focus:outline-none"
       />
+
+      {supported && (
+        <button
+          type="button"
+          onClick={() => toggle(transcript)}
+          className={
+            "mt-2 flex min-h-[40px] items-center gap-2 text-sm transition-colors " +
+            (listening ? "text-gold" : "text-white/45 hover:text-white")
+          }
+        >
+          {listening ? <Square size={14} aria-hidden="true" /> : <Mic size={14} aria-hidden="true" />}
+          {asking
+            ? "Allow the microphone to continue…"
+            : listening
+              ? "Listening — tap when you're done"
+              : "Or record straight into the page"}
+        </button>
+      )}
 
       {micError && (
         <p role="alert" className="mt-3 text-sm leading-relaxed text-red-300">

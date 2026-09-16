@@ -74,7 +74,7 @@ function explain(code: string | undefined): string | null {
   switch (code) {
     case "not-allowed":
     case "service-not-allowed":
-      return "Your browser blocked the microphone. Allow it from the padlock beside the address bar — or just type it in below, the keyboard microphone works too.";
+      return "This browser won't give the page the microphone. Use the microphone on your keyboard instead — tap the box above and look for it on the keyboard.";
     case "audio-capture":
       return "No microphone available. Type it in below instead.";
     case "network":
@@ -89,6 +89,33 @@ function explain(code: string | undefined): string | null {
   }
 }
 
+/**
+ * Whether the in-page microphone has already been refused on this device.
+ *
+ * Remembered so a button that cannot work stops being offered. Some phones
+ * refuse it at the operating system level, where nothing in the page can help,
+ * and re-presenting it every visit only invites the same dead end.
+ */
+const DENIED_KEY = "sd_mic_denied";
+
+function wasDenied(): boolean {
+  try {
+    return localStorage.getItem(DENIED_KEY) === "1";
+  } catch {
+    // Private windows and blocked site data. Offering the button is the
+    // harmless side to fail on.
+    return false;
+  }
+}
+
+function rememberDenied() {
+  try {
+    localStorage.setItem(DENIED_KEY, "1");
+  } catch {
+    // Nothing to do — it simply gets offered again next time.
+  }
+}
+
 export function useDictation(onText: (text: string) => void) {
   const [listening, setListening] = useState(false);
   // True only while the permission dialog is up. Without it the button sits
@@ -96,6 +123,7 @@ export function useDictation(onText: (text: string) => void) {
   // happened — the exact impression this whole change exists to remove.
   const [asking, setAsking] = useState(false);
   const [supported, setSupported] = useState(false);
+  const [denied, setDenied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const recognition = useRef<Recognition | null>(null);
@@ -156,6 +184,7 @@ export function useDictation(onText: (text: string) => void) {
 
     recognition.current = r;
     setSupported(true);
+    setDenied(wasDenied());
 
     return () => {
       wanted.current = false;
@@ -188,10 +217,12 @@ export function useDictation(onText: (text: string) => void) {
     // raises the Allow dialog; until it is accepted there is no point starting
     // recognition, and starting it first is what made the button look dead.
     setAsking(true);
-    const denied = await requestMicrophone();
+    const refusal = await requestMicrophone();
     setAsking(false);
-    if (denied) {
-      setError(denied);
+    if (refusal) {
+      setError(refusal);
+      rememberDenied();
+      setDenied(true);
       return;
     }
 
@@ -208,5 +239,13 @@ export function useDictation(onText: (text: string) => void) {
     }
   }, []);
 
-  return { listening, asking, supported, error, toggle, clearError: () => setError(null) };
+  return {
+    listening,
+    asking,
+    // Offered only where it can actually work.
+    supported: supported && !denied,
+    error,
+    toggle,
+    clearError: () => setError(null),
+  };
 }
