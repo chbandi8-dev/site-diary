@@ -42,7 +42,7 @@ export default async function HouseCapture({ params }: { params: { id: string } 
       owners: {
         select: {
           revokedAt: true,
-          owner: { select: { id: true, name: true, email: true } },
+          owner: { select: { id: true, name: true, email: true, phone: true } },
         },
       },
       accessLinks: {
@@ -173,6 +173,9 @@ export default async function HouseCapture({ params }: { params: { id: string } 
       <QuickSend
         houseId={house.id}
         stages={house.stages.map((s) => ({ id: s.id, name: s.name, status: s.status }))}
+        owners={house.owners
+          .filter((o) => !o.revokedAt)
+          .map((o) => ({ id: o.owner.id, name: o.owner.name, phone: o.owner.phone }))}
       />
 
       <HouseLink
@@ -186,6 +189,7 @@ export default async function HouseCapture({ params }: { params: { id: string } 
           ownerId: o.owner.id,
           name: o.owner.name,
           email: o.owner.email,
+          phone: o.owner.phone,
           revoked: Boolean(o.revokedAt),
         }))}
       />

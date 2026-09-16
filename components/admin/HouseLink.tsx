@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { whatsAppLink } from "@/lib/phone";
 import { useRouter } from "next/navigation";
-import { Check, Copy, Link2, MailX, RefreshCw, Undo2 } from "lucide-react";
+import { Check, Copy, Link2, MailX, RefreshCw, Undo2, Pencil, MessageCircle } from "lucide-react";
 
 type Registered = {
   ownerId: string;
+  phone: string | null;
   name: string;
   email: string | null;
   revoked: boolean;
@@ -42,6 +44,9 @@ export default function HouseLink({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [form, setForm] = useState({ name: "", email: "", phone: "" });
+  const [editError, setEditError] = useState<string | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +79,31 @@ export default function HouseLink({
       setTimeout(() => setCopied(false), 2500);
     } catch {
       setError("Couldn't copy — select the link and copy it manually.");
+    }
+  }
+
+  async function saveOwner(ownerId: string) {
+    setBusy(true);
+    setEditError(null);
+    try {
+      const res = await fetch("/api/pm/owners", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ownerId,
+          houseId,
+          name: form.name.trim(),
+          email: form.email.trim(),
+          phone: form.phone.trim(),
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Couldn't save that.");
+      setEditing(null);
+      router.refresh();
+    } catch (cause) {
+      setEditError(cause instanceof Error ? cause.message : "Couldn't save that.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -185,31 +215,129 @@ export default function HouseLink({
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {registered.map((r) => (
-            <li
-              key={r.ownerId}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/5 bg-dark-card px-5 py-4"
-            >
-              <div className="min-w-0">
-                <span className="block font-medium text-white">{r.name}</span>
-                <span className="block truncate text-sm text-white/45">{r.email ?? "No email"}</span>
-                {r.revoked && (
-                  <span className="mt-1 block font-mono text-[10px] uppercase tracking-[0.12em] text-white/35">
-                    Removed
-                  </span>
-                )}
-              </div>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setRevoked(r.ownerId, !r.revoked)}
-                className="flex min-h-[40px] items-center gap-2 rounded-lg border border-white/15 px-4 text-sm text-white/70 hover:border-white/35 disabled:opacity-40"
+          {registered.map((r) => {
+            const wa = whatsAppLink(r.phone, `Hi ${r.name.split(" ")[0]}, `);
+            const open = editing === r.ownerId;
+            return (
+              <li
+                key={r.ownerId}
+                className="rounded-lg border border-white/5 bg-dark-card px-5 py-4"
               >
-                {r.revoked ? <Undo2 size={14} /> : <MailX size={14} />}
-                {r.revoked ? "Resume emails" : "Stop emails"}
-              </button>
-            </li>
-          ))}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="block font-medium text-white">{r.name}</span>
+                    <span className="block truncate text-sm text-white/45">
+                      {r.email ?? "No email"}
+                      {r.phone ? ` · ${r.phone}` : ""}
+                    </span>
+                    {r.revoked && (
+                      <span className="mt-1 block font-mono text-[10px] uppercase tracking-[0.12em] text-white/35">
+                        Removed
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Greyed out until there is a number to open it with —
+                        present either way, so it is obvious that adding a
+                        number is what turns it on. */}
+                    {wa ? (
+                      <a
+                        href={wa}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex min-h-[40px] items-center gap-2 rounded-lg border border-emerald-400/40 px-4 text-sm text-emerald-300 hover:border-emerald-400"
+                      >
+                        <MessageCircle size={14} aria-hidden="true" />
+                        WhatsApp
+                      </a>
+                    ) : (
+                      <span
+                        title="Add a phone number to use WhatsApp"
+                        className="flex min-h-[40px] cursor-not-allowed items-center gap-2 rounded-lg border border-white/10 px-4 text-sm text-white/25"
+                      >
+                        <MessageCircle size={14} aria-hidden="true" />
+                        WhatsApp
+                      </span>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditing(open ? null : r.ownerId);
+                        setForm({ name: r.name, email: r.email ?? "", phone: r.phone ?? "" });
+                        setEditError(null);
+                      }}
+                      className="flex min-h-[40px] items-center gap-2 rounded-lg border border-white/15 px-4 text-sm text-white/70 hover:border-white/35"
+                    >
+                      <Pencil size={14} aria-hidden="true" />
+                      {open ? "Cancel" : "Edit"}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setRevoked(r.ownerId, !r.revoked)}
+                      className="flex min-h-[40px] items-center gap-2 rounded-lg border border-white/15 px-4 text-sm text-white/70 hover:border-white/35 disabled:opacity-40"
+                    >
+                      {r.revoked ? <Undo2 size={14} /> : <MailX size={14} />}
+                      {r.revoked ? "Resume emails" : "Stop emails"}
+                    </button>
+                  </div>
+                </div>
+
+                {open && (
+                  <div className="mt-4 flex flex-col gap-3 border-t border-white/5 pt-4">
+                    {editError && (
+                      <p role="alert" className="text-sm text-red-300">{editError}</p>
+                    )}
+
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <input
+                        aria-label="Name"
+                        value={form.name}
+                        onChange={(e) => setForm({ ...form, name: e.target.value })}
+                        placeholder="Name"
+                        className="rounded-lg border border-white/10 bg-dark px-4 py-2.5 text-white placeholder:text-white/25 focus:border-gold focus:outline-none"
+                      />
+                      <input
+                        aria-label="Email"
+                        type="email"
+                        inputMode="email"
+                        value={form.email}
+                        onChange={(e) => setForm({ ...form, email: e.target.value })}
+                        placeholder="Email"
+                        className="rounded-lg border border-white/10 bg-dark px-4 py-2.5 text-white placeholder:text-white/25 focus:border-gold focus:outline-none"
+                      />
+                      <input
+                        aria-label="Mobile"
+                        type="tel"
+                        inputMode="tel"
+                        value={form.phone}
+                        onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                        placeholder="0412 345 678"
+                        className="rounded-lg border border-white/10 bg-dark px-4 py-2.5 text-white placeholder:text-white/25 focus:border-gold focus:outline-none"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => saveOwner(r.ownerId)}
+                      disabled={busy || !form.name.trim() || !form.email.trim()}
+                      className="min-h-[44px] self-start rounded-lg bg-gold px-5 text-sm font-medium text-dark disabled:opacity-40"
+                    >
+                      {busy ? "Saving…" : "Save"}
+                    </button>
+
+                    <p className="text-xs leading-relaxed text-white/30">
+                      The mobile is only used to open WhatsApp with a message ready to
+                      send — nothing is ever sent to it automatically.
+                    </p>
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>

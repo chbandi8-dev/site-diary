@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { whatsAppLink } from "@/lib/phone";
 import { useRouter } from "next/navigation";
-import { Camera, Check, ImagePlus, Loader2, RotateCw, X } from "lucide-react";
+import { Camera, Check, ImagePlus, Loader2, RotateCw, X, MessageCircle } from "lucide-react";
 import { uploadPhoto } from "@/lib/capture/photo";
 import VoiceNote from "./VoiceNote";
 
@@ -41,9 +42,12 @@ type Attached = {
 export default function QuickSend({
   houseId,
   stages,
+  owners,
 }: {
   houseId: string;
   stages: { id: string; name: string; status: string }[];
+  /** For the WhatsApp hand-off — email goes automatically, this does not. */
+  owners: { id: string; name: string; phone: string | null }[];
 }) {
   const router = useRouter();
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -53,6 +57,16 @@ export default function QuickSend({
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [undo, setUndo] = useState<{ id: string; until: number } | null>(null);
+  /**
+   * What was just sent, kept so it can be handed to WhatsApp.
+   *
+   * WhatsApp cannot be sent from a server without a paid Business account, and
+   * buying one to send twenty-five messages a week would be the most expensive
+   * line in this product. Opening the app with the message already written
+   * costs nothing and takes one tap — which is what he does today anyway,
+   * except he has to type it.
+   */
+  const [lastSent, setLastSent] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const [draftKind, setDraftKind] = useState<"progress" | "delay" | "milestone">("progress");
   /**
@@ -141,6 +155,7 @@ export default function QuickSend({
       if (!res.ok) throw new Error(data.error ?? "That didn't send.");
 
       setResult({ ok: true, text: data.message });
+      setLastSent(data.body ?? null);
       // Mis-taps on site are not rare, and there is no taking an email back
       // once the send job has run. The window is short but it covers the
       // "wrong house" moment, which is the one that actually happens.
@@ -177,6 +192,7 @@ export default function QuickSend({
       if (!res.ok) throw new Error(data.error ?? "That didn't send.");
 
       setResult({ ok: true, text: data.message });
+      setLastSent(draft);
       if (data.published) setUndo({ id: data.id, until: Date.now() + 12_000 });
       setDraft(null);
       setPhotos([]);
@@ -219,6 +235,42 @@ export default function QuickSend({
               Undo
             </button>
           )}
+        </div>
+      )}
+
+      {/* The email has already gone. This is the same words, handed to
+          WhatsApp, for the owners who would rather hear from him there —
+          which, for a builder, is most of them. */}
+      {lastSent && owners.length > 0 && (
+        <div className="mb-5 flex flex-wrap items-center gap-2">
+          <span className="font-mono text-[10px] uppercase tracking-[0.13em] text-white/35">
+            Also on WhatsApp
+          </span>
+          {owners.map((o) => {
+            const link = whatsAppLink(o.phone, lastSent);
+            const first = o.name.split(" ")[0];
+            return link ? (
+              <a
+                key={o.id}
+                href={link}
+                target="_blank"
+                rel="noreferrer"
+                className="flex min-h-[38px] items-center gap-1.5 rounded-lg border border-emerald-400/40 px-3 text-sm text-emerald-300 hover:border-emerald-400"
+              >
+                <MessageCircle size={13} aria-hidden="true" />
+                {first}
+              </a>
+            ) : (
+              <span
+                key={o.id}
+                title={`No mobile for ${first} — add one under the owner link`}
+                className="flex min-h-[38px] cursor-not-allowed items-center gap-1.5 rounded-lg border border-white/10 px-3 text-sm text-white/25"
+              >
+                <MessageCircle size={13} aria-hidden="true" />
+                {first}
+              </span>
+            );
+          })}
         </div>
       )}
 
