@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth-guard";
 import { AlertCircle, Clock } from "lucide-react";
 import AddHouse from "@/components/admin/AddHouse";
+import DemoHouses from "@/components/admin/DemoHouses";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,9 @@ export default async function HousesPage() {
     },
     orderBy: { address: "asc" },
   });
+
+  const demoPresent =
+    (await prisma.owner.count({ where: { email: { endsWith: "example.invalid" } } })) > 0;
 
   const now = Date.now();
   const withState = houses.map((h) => {
@@ -128,9 +132,12 @@ export default async function HousesPage() {
 
       {withState.length === 0 && (
         <p className="rounded-lg border border-white/5 bg-dark-card px-5 py-8 text-center text-white/45">
-          No active houses yet.
+          No houses yet. Add one by talking to it, or drop in the examples below to
+          see how it all works first.
         </p>
       )}
+
+      <DemoHouses present={demoPresent} />
     </div>
   );
 }
