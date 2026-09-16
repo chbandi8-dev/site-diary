@@ -152,7 +152,7 @@ export default async function HouseCapture({ params }: { params: { id: string } 
         handoverTo={house.handoverTo?.toISOString() ?? null}
       />
 
-      <StageBoard stages={house.stages} />
+      <StageBoard stages={house.stages} houseId={house.id} />
 
       <QuickSend houseId={house.id} />
 

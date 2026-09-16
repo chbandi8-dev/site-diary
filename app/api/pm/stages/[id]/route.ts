@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { milestoneCopyFor } from "@/lib/stage-copy";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +33,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const stage = await prisma.houseStage.findUnique({
     where: { id: params.id },
-    select: { id: true, startedAt: true },
+    select: { id: true, startedAt: true, name: true, status: true },
   });
   if (!stage) return NextResponse.json({ error: "Stage not found" }, { status: 404 });
 
@@ -48,5 +49,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     },
   });
 
-  return NextResponse.json({ ok: true });
+  // Finishing a milestone is the best trigger in the app: he has just told us
+  // something the owner genuinely cares about, at the moment it happened, and
+  // it costs him nothing extra. A suggestion is returned rather than an update
+  // being sent — he still decides, and most stages return nothing at all
+  // because owners do not want an email about under-slab plumbing.
+  const suggested =
+    status === "complete" && stage.status !== "complete" ? milestoneCopyFor(stage.name) : null;
+
+  return NextResponse.json({ ok: true, suggested, stageName: stage.name });
 }

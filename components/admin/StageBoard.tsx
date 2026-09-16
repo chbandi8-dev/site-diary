@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Send, X } from "lucide-react";
 
 type Stage = { id: string; name: string; phase: string | null; status: string };
 
@@ -44,22 +45,60 @@ const TONE: Record<string, string> = {
  * screen only appear for stages that are actually active. Stale stages mean a
  * page that quietly lies and a "slab poured" button that never shows up.
  */
-export default function StageBoard({ stages }: { stages: Stage[] }) {
+export default function StageBoard({
+  stages,
+  houseId,
+}: {
+  stages: Stage[];
+  houseId: string;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<{ stage: string; body: string } | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function cycle(stage: Stage) {
     setBusy(stage.id);
+    setError(null);
     try {
-      await fetch(`/api/pm/stages/${stage.id}`, {
+      const res = await fetch(`/api/pm/stages/${stage.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: CYCLE[stage.status] ?? "in_progress" }),
       });
+      const data = await res.json().catch(() => ({}));
+      // Offered, never sent on his behalf. Marking a stage done is a record
+      // keeping action; emailing twenty-five owners is not, and conflating
+      // them would make him hesitant to keep the board accurate.
+      if (data?.suggested) setDraft({ stage: data.stageName, body: data.suggested });
       router.refresh();
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function send() {
+    if (!draft) return;
+    setSending(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/pm/updates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ houseId, body: draft.body, kind: "milestone" }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "That didn't send.");
+      setSent(draft.stage);
+      setDraft(null);
+      router.refresh();
+      setTimeout(() => setSent(null), 6000);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "That didn't send.");
+    } finally {
+      setSending(false);
     }
   }
 
@@ -87,6 +126,50 @@ export default function StageBoard({ stages }: { stages: Stage[] }) {
           {open ? "Show less" : `All ${stages.length} stages`}
         </button>
       </div>
+
+      {draft && (
+        <div className="mb-4 rounded-lg border border-gold/25 bg-gold/[0.06] p-4">
+          <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.12em] text-gold">
+            {draft.stage} is done — tell them?
+          </p>
+          <textarea
+            rows={4}
+            value={draft.body}
+            onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+            aria-label="Message to the owners"
+            className="w-full rounded-lg border border-white/10 bg-dark px-4 py-3 leading-relaxed text-white focus:border-gold focus:outline-none"
+          />
+          {error && <p role="alert" className="mt-2 text-sm text-red-300">{error}</p>}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={send}
+              disabled={sending || !draft.body.trim()}
+              className="flex min-h-[44px] items-center gap-2 rounded-lg bg-gold px-5 text-sm font-medium text-dark disabled:opacity-40"
+            >
+              <Send size={14} aria-hidden="true" />
+              {sending ? "Sending…" : "Send it"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setDraft(null)}
+              className="flex min-h-[44px] items-center gap-1.5 rounded-lg px-3 text-sm text-white/50 hover:text-white"
+            >
+              <X size={14} aria-hidden="true" />
+              Not now
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-white/35">
+            Edit it first if you like. The stage is already marked done either way.
+          </p>
+        </div>
+      )}
+
+      {sent && (
+        <p role="status" className="mb-4 text-sm text-gold">
+          Sent — the owners have been told {sent.toLowerCase()} is done.
+        </p>
+      )}
 
       <ul className="flex flex-col gap-1.5">
         {shown.map((s) => (
