@@ -172,7 +172,7 @@ export default function AddHouse({ stageNames }: { stageNames: string[] }) {
       </div>
 
       {(error || micError) && (
-        <p role="alert" className="mb-3 text-sm text-red-300">{error ?? micError}</p>
+        <p role="alert" className="mb-3 text-sm text-danger">{error ?? micError}</p>
       )}
 
       {!draft ? (

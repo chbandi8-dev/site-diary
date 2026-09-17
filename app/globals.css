@@ -31,6 +31,33 @@
   --input: 214.3 31.8% 91.4%;
   --ring: 40 65% 55%;
   --radius: 0.5rem;
+
+  /* ── The staff side's palette ─────────────────────────────────────────
+     Defined here as well as on .admin-shell so that `white` — which is
+     remapped to `--ink` in the Tailwind config — keeps meaning white
+     everywhere outside the admin. The marketing site must not move. */
+  --ink: 255 255 255;
+  --gold: 201 168 76;
+  --gold-light: 226 196 122;
+  --gold-dark: 154 122 46;
+  --admin-bg: 28 28 30;
+  --admin-raised: 44 44 46;
+  --admin-card: 36 36 38;
+  --danger: 248 113 113;
+}
+
+/* Light, for reading a phone in the sun. One override; every class in the
+   staff side follows, because they are all written against these five. */
+[data-admin-theme="light"] .admin-shell {
+  --ink: 32 31 28;
+  --gold: 138 109 34;
+  --gold-light: 154 122 46;
+  --gold-dark: 106 83 24;
+  --admin-bg: 244 243 239;
+  --admin-raised: 255 255 255;
+  --admin-card: 255 255 255;
+  --danger: 185 28 28;
+  color-scheme: light;
 }
 
 * {

@@ -251,7 +251,7 @@ export default function MessageTrade({
 
           <div className="mt-4">
             {shareError && (
-              <p role="alert" className="mb-3 text-sm text-red-300">{shareError}</p>
+              <p role="alert" className="mb-3 text-sm text-danger">{shareError}</p>
             )}
             {copied && (
               <p role="status" className="mb-3 flex items-center gap-1.5 text-sm text-gold">

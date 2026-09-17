@@ -266,7 +266,7 @@ export default function StageBoard({
       </div>
 
       {error && !draft && (
-        <p role="alert" className="mb-3 text-sm text-red-300">{error}</p>
+        <p role="alert" className="mb-3 text-sm text-danger">{error}</p>
       )}
 
       {draft && (
@@ -281,7 +281,7 @@ export default function StageBoard({
             aria-label="Message to the owners"
             className="w-full rounded-lg border border-white/10 bg-dark px-4 py-3 leading-relaxed text-white focus:border-gold focus:outline-none"
           />
-          {error && <p role="alert" className="mt-2 text-sm text-red-300">{error}</p>}
+          {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -392,7 +392,7 @@ export default function StageBoard({
                   disabled={busy === s.id}
                   onClick={() => removeStage(s)}
                   aria-label={`Remove ${s.name}`}
-                  className="min-h-[44px] flex-none rounded-lg px-2 text-white/30 hover:bg-white/5 hover:text-red-300 disabled:opacity-40"
+                  className="min-h-[44px] flex-none rounded-lg px-2 text-white/30 hover:bg-white/5 hover:text-danger disabled:opacity-40"
                 >
                   <Trash2 size={14} />
                 </button>

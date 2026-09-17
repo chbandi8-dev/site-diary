@@ -113,7 +113,7 @@ export default function VoiceNote({
       )}
 
       {micError && (
-        <p role="alert" className="mt-3 text-sm leading-relaxed text-red-300">
+        <p role="alert" className="mt-3 text-sm leading-relaxed text-danger">
           {micError}
         </p>
       )}

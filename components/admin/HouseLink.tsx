@@ -153,7 +153,7 @@ export default function HouseLink({
       </h2>
 
       <div className="rounded-lg border border-white/5 bg-dark-card p-5">
-        {error && <p className="mb-4 text-sm text-red-300">{error}</p>}
+        {error && <p className="mb-4 text-sm text-danger">{error}</p>}
 
         {url ? (
           <>
@@ -325,7 +325,7 @@ export default function HouseLink({
                 {open && (
                   <div className="mt-4 flex flex-col gap-3 border-t border-white/5 pt-4">
                     {editError && (
-                      <p role="alert" className="text-sm text-red-300">{editError}</p>
+                      <p role="alert" className="text-sm text-danger">{editError}</p>
                     )}
 
                     <div className="grid gap-3 sm:grid-cols-3">

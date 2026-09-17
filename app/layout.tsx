@@ -67,6 +67,18 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} ${fraunces.variable}`}>
+      <head>
+        {/* Applied before the first paint, so a staff user who has chosen the
+            light background never gets a black flash on the way in. Scoped to
+            .admin-shell in globals.css, so the marketing site is unaffected
+            whatever this says. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{document.documentElement.dataset.adminTheme=localStorage.getItem('sd_admin_theme')==='light'?'light':'dark'}catch(e){}",
+          }}
+        />
+      </head>
       <body>
         {children}
         <Toaster

@@ -241,7 +241,7 @@ export default function QuickSend({
           role="status"
           className={
             "mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg px-4 py-3 text-sm leading-relaxed " +
-            (result.ok ? "bg-gold/15 text-gold" : "bg-red-500/15 text-red-300")
+            (result.ok ? "bg-gold/15 text-gold" : "bg-red-500/15 text-danger")
           }
         >
           <span>{result.text}</span>
@@ -467,7 +467,7 @@ export default function QuickSend({
             >
               {p.state === "uploading" && <Loader2 size={13} className="animate-spin" aria-hidden="true" />}
               {p.state === "ready" && <Check size={13} className="text-gold" aria-hidden="true" />}
-              {p.state === "failed" && <X size={13} className="text-red-400" aria-hidden="true" />}
+              {p.state === "failed" && <X size={13} className="text-danger" aria-hidden="true" />}
               <span className="max-w-[9rem] truncate">{p.name}</span>
               {/*
                 A failed photo used to be silently dropped from the send, so he

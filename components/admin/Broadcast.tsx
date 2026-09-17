@@ -98,7 +98,7 @@ export default function Broadcast() {
           {result}
         </p>
       )}
-      {error && <p role="alert" className="mb-4 text-sm text-red-300">{error}</p>}
+      {error && <p role="alert" className="mb-4 text-sm text-danger">{error}</p>}
 
       <div className="mb-5 flex flex-wrap gap-2">
         {SUGGESTIONS.map((s) => (

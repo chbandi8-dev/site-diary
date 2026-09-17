@@ -56,7 +56,7 @@ export default function AssignHouses({
         Lots in this development
       </h2>
 
-      {note && <p role="alert" className="mb-3 text-sm text-red-300">{note}</p>}
+      {note && <p role="alert" className="mb-3 text-sm text-danger">{note}</p>}
 
       {inDevelopment.length > 0 && (
         <>

@@ -116,7 +116,7 @@ export default function VariationsPanel({
 
       {open && (
         <div className="mb-4 rounded-lg border border-white/5 bg-dark-card p-5">
-          {error && <p role="alert" className="mb-3 text-sm text-red-300">{error}</p>}
+          {error && <p role="alert" className="mb-3 text-sm text-danger">{error}</p>}
 
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
@@ -166,7 +166,7 @@ export default function VariationsPanel({
         </div>
       )}
 
-      {error && !open && <p role="alert" className="mb-3 text-sm text-red-300">{error}</p>}
+      {error && !open && <p role="alert" className="mb-3 text-sm text-danger">{error}</p>}
 
       {variations.length > 0 ? (
         <ul className="flex flex-col">

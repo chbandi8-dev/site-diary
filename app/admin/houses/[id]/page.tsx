@@ -16,6 +16,7 @@ import DefectsPanel from "@/components/admin/DefectsPanel";
 import ForecastPanel from "@/components/admin/ForecastPanel";
 import MessageTrade from "@/components/admin/MessageTrade";
 import HouseStatus from "@/components/admin/HouseStatus";
+import HouseTabs from "@/components/admin/HouseTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,8 @@ export default async function HouseCapture({ params }: { params: { id: string } 
       id: true,
       address: true,
       suburb: true,
+      lotNumber: true,
+      development: { select: { name: true } },
       waitingOn: true,
       waitingOnEta: true,
       handoverFrom: true,
@@ -164,183 +167,219 @@ export default async function HouseCapture({ params }: { params: { id: string } 
     },
   });
 
+  const underway = house.stages.filter((s) => s.status === "in_progress");
+  const owners = house.owners.filter((o) => !o.revokedAt);
+  const openDecisions = house.decisions.filter((d) => d.status === "open").length;
+  const openVariations = house.variations.filter((v) => v.status === "sent").length;
+  const openDefects = house.defects.filter((d) => d.status !== "resolved").length;
+  const drafts = house.updates.filter((u) => !u.publishedAt).length;
+
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-3xl">
       <Link href="/admin/houses" className="text-sm text-white/45 hover:text-white">
         ← All houses
       </Link>
 
-      <header className="mb-7 mt-4">
-        <h1 className="font-display text-3xl text-white">{house.address}</h1>
-        <p className="mt-1 text-sm text-white/45">
-          {house.owners
-            .filter((o) => !o.revokedAt)
-            .map((o) => o.owner.name)
-            .join(" & ") || "No owners linked"}
-          {house.stages.filter((s) => s.status === "in_progress").length > 0 &&
-            ` · ${house.stages
-              .filter((s) => s.status === "in_progress")
-              .map((s) => s.name)
-              .join(", ")}`}
+      <header className="mb-5 mt-3">
+        {house.development && (
+          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/35">
+            {house.development.name}
+            {house.lotNumber ? ` · Lot ${house.lotNumber}` : ""}
+          </p>
+        )}
+        <h1 className="mt-1 font-display text-2xl leading-tight text-white sm:text-3xl">
+          {house.address}
+        </h1>
+        <p className="mt-1 text-sm leading-snug text-white/45">
+          {owners.map((o) => o.owner.name).join(" & ") || "No owners linked"}
+          {house.suburb ? ` · ${house.suburb}` : ""}
         </p>
+        {underway.length > 0 && (
+          <p className="mt-1.5 text-sm leading-snug text-gold/85">
+            {underway.map((s) => s.name).join(" · ")}
+          </p>
+        )}
       </header>
 
-      <HouseStatus
-        houseId={house.id}
-        waitingOn={house.waitingOn}
-        waitingOnEta={house.waitingOnEta?.toISOString() ?? null}
-        handoverFrom={house.handoverFrom?.toISOString() ?? null}
-        handoverTo={house.handoverTo?.toISOString() ?? null}
-      />
+      {/* Five tabs instead of fourteen stacked panels. Everything is still
+          rendered — switching is instant and costs no network, which matters
+          on a site with one bar of signal. */}
+      <HouseTabs
+        tabs={[
+          { id: "today", label: "Today" },
+          { id: "owners", label: "Owners", badge: openDecisions + drafts },
+          { id: "money", label: "Money", badge: openVariations },
+          { id: "site", label: "Site", badge: openDefects },
+          { id: "private", label: "Notes" },
+        ]}
+      >
+        <div>
+          <HouseStatus
+                  houseId={house.id}
+                  waitingOn={house.waitingOn}
+                  waitingOnEta={house.waitingOnEta?.toISOString() ?? null}
+                  handoverFrom={house.handoverFrom?.toISOString() ?? null}
+                  handoverTo={house.handoverTo?.toISOString() ?? null}
+                />
 
-      <StageBoard
-        houseId={house.id}
-        stages={house.stages.map((s) => ({
-          id: s.id,
-          name: s.name,
-          phase: s.phase,
-          status: s.status,
-          notes: s._count.updates,
-          photos: s._count.photos,
-        }))}
-      />
+          <StageBoard
+                  houseId={house.id}
+                  stages={house.stages.map((s) => ({
+                    id: s.id,
+                    name: s.name,
+                    phase: s.phase,
+                    status: s.status,
+                    notes: s._count.updates,
+                    photos: s._count.photos,
+                  }))}
+                />
 
-      <QuickSend
-        houseId={house.id}
-        stages={house.stages.map((s) => ({ id: s.id, name: s.name, status: s.status }))}
-        owners={house.owners
-          .filter((o) => !o.revokedAt)
-          .map((o) => ({ id: o.owner.id, name: o.owner.name, phone: o.owner.phone }))}
-      />
+          <QuickSend
+                  houseId={house.id}
+                  stages={house.stages.map((s) => ({ id: s.id, name: s.name, status: s.status }))}
+                  owners={house.owners
+                    .filter((o) => !o.revokedAt)
+                    .map((o) => ({ id: o.owner.id, name: o.owner.name, phone: o.owner.phone }))}
+                />
+        </div>
 
-      <HouseLink
-        houseId={house.id}
-        address={house.address}
-        hasLink={house.accessLinks.length > 0}
-        linkHint={house.accessLinks[0]?.hint ?? null}
-        lastUsedAt={house.accessLinks[0]?.lastUsedAt?.toISOString() ?? null}
-        useCount={house.accessLinks[0]?.useCount ?? 0}
-        registered={house.owners.map((o) => ({
-          ownerId: o.owner.id,
-          name: o.owner.name,
-          email: o.owner.email,
-          phone: o.owner.phone,
-          lastSeenAt: o.lastSeenAt?.toISOString() ?? null,
-          revoked: Boolean(o.revokedAt),
-        }))}
-      />
+        <div>
+          <HouseLink
+                  houseId={house.id}
+                  address={house.address}
+                  hasLink={house.accessLinks.length > 0}
+                  linkHint={house.accessLinks[0]?.hint ?? null}
+                  lastUsedAt={house.accessLinks[0]?.lastUsedAt?.toISOString() ?? null}
+                  useCount={house.accessLinks[0]?.useCount ?? 0}
+                  registered={house.owners.map((o) => ({
+                    ownerId: o.owner.id,
+                    name: o.owner.name,
+                    email: o.owner.email,
+                    phone: o.owner.phone,
+                    lastSeenAt: o.lastSeenAt?.toISOString() ?? null,
+                    revoked: Boolean(o.revokedAt),
+                  }))}
+                />
 
-      <DecisionsPanel
-        houseId={house.id}
-        decisions={house.decisions.map((d) => ({
-          id: d.id,
-          question: d.question,
-          dueDate: d.dueDate?.toISOString() ?? null,
-          status: d.status,
-          askedAt: d.askedAt.toISOString(),
-          answeredAt: d.answeredAt?.toISOString() ?? null,
-          answer: d.answer,
-        }))}
-      />
+          <DecisionsPanel
+                  houseId={house.id}
+                  decisions={house.decisions.map((d) => ({
+                    id: d.id,
+                    question: d.question,
+                    dueDate: d.dueDate?.toISOString() ?? null,
+                    status: d.status,
+                    askedAt: d.askedAt.toISOString(),
+                    answeredAt: d.answeredAt?.toISOString() ?? null,
+                    answer: d.answer,
+                  }))}
+                />
 
-      <VariationsPanel
-        houseId={house.id}
-        variations={house.variations.map((v) => ({
-          id: v.id,
-          reference: v.reference,
-          description: v.description,
-          amountCents: v.amountCents,
-          status: v.status,
-          sentAt: v.sentAt?.toISOString() ?? null,
-          approvedAt: v.approvedAt?.toISOString() ?? null,
-          declinedAt: v.declinedAt?.toISOString() ?? null,
-          declineReason: v.declineReason,
-          decidedBy: v.approvedBy?.name ?? null,
-        }))}
-      />
+          <RecentUpdates
+                  updates={house.updates.map((u) => ({
+                    id: u.id,
+                    body: u.body,
+                    occurredAt: u.occurredAt.toISOString(),
+                    published: Boolean(u.publishedAt),
+                  }))}
+                />
+        </div>
 
-      <DocumentsPanel
-        houseId={house.id}
-        documents={house.documents.map((d) => ({
-          id: d.id,
-          title: d.title,
-          category: d.category,
-          bytes: d.bytes,
-          uploadedAt: d.uploadedAt.toISOString(),
-        }))}
-      />
+        <div>
+          <VariationsPanel
+                  houseId={house.id}
+                  variations={house.variations.map((v) => ({
+                    id: v.id,
+                    reference: v.reference,
+                    description: v.description,
+                    amountCents: v.amountCents,
+                    status: v.status,
+                    sentAt: v.sentAt?.toISOString() ?? null,
+                    approvedAt: v.approvedAt?.toISOString() ?? null,
+                    declinedAt: v.declinedAt?.toISOString() ?? null,
+                    declineReason: v.declineReason,
+                    decidedBy: v.approvedBy?.name ?? null,
+                  }))}
+                />
 
-      <WetDays
-        houseId={house.id}
-        days={house.weatherDays.map((d) => ({
-          id: d.id,
-          // Date-only column: taking the ISO prefix keeps a Sydney evening from
-          // rendering as the day before once it crosses UTC midnight.
-          date: d.date.toISOString().slice(0, 10),
-          note: d.note,
-          rainfallMm: d.rainfallMm,
-          claimed: Boolean(d.eotClaimedAt),
-        }))}
-      />
+          <DocumentsPanel
+                  houseId={house.id}
+                  documents={house.documents.map((d) => ({
+                    id: d.id,
+                    title: d.title,
+                    category: d.category,
+                    bytes: d.bytes,
+                    uploadedAt: d.uploadedAt.toISOString(),
+                  }))}
+                />
+        </div>
 
-      <ForecastPanel
-        houseId={house.id}
-        history={house.forecasts.map((h) => ({
-          from: h.from.toISOString(),
-          to: h.to.toISOString(),
-          reason: h.reason,
-          createdAt: h.createdAt.toISOString(),
-          notified: Boolean(h.notifiedAt),
-        }))}
-      />
+        <div>
+          <DefectsPanel
+                  houseId={house.id}
+                  defects={house.defects.map((d) => ({
+                    id: d.id,
+                    reference: d.reference,
+                    location: d.location,
+                    description: d.description,
+                    status: d.status,
+                    raisedByOwner: d.raisedByOwner,
+                    targetAt: d.targetAt?.toISOString() ?? null,
+                    resolvedAt: d.resolvedAt?.toISOString() ?? null,
+                  }))}
+                />
 
-      <MessageTrade
-        address={house.address}
-        suburb={house.suburb}
-        trades={trades}
-        photos={photos}
-        underway={house.stages.filter((s) => s.status === "in_progress").map((s) => s.name)}
-        openDefects={house.defects
-          .filter((d) => d.status !== "resolved")
-          .map((d) => ({
-            reference: d.reference,
-            location: d.location,
-            description: d.description,
-          }))}
-      />
+          <WetDays
+                  houseId={house.id}
+                  days={house.weatherDays.map((d) => ({
+                    id: d.id,
+                    // Date-only column: taking the ISO prefix keeps a Sydney evening from
+                    // rendering as the day before once it crosses UTC midnight.
+                    date: d.date.toISOString().slice(0, 10),
+                    note: d.note,
+                    rainfallMm: d.rainfallMm,
+                    claimed: Boolean(d.eotClaimedAt),
+                  }))}
+                />
 
-      <DefectsPanel
-        houseId={house.id}
-        defects={house.defects.map((d) => ({
-          id: d.id,
-          reference: d.reference,
-          location: d.location,
-          description: d.description,
-          status: d.status,
-          raisedByOwner: d.raisedByOwner,
-          targetAt: d.targetAt?.toISOString() ?? null,
-          resolvedAt: d.resolvedAt?.toISOString() ?? null,
-        }))}
-      />
+          <MessageTrade
+                  address={house.address}
+                  suburb={house.suburb}
+                  trades={trades}
+                  photos={photos}
+                  underway={house.stages.filter((s) => s.status === "in_progress").map((s) => s.name)}
+                  openDefects={house.defects
+                    .filter((d) => d.status !== "resolved")
+                    .map((d) => ({
+                      reference: d.reference,
+                      location: d.location,
+                      description: d.description,
+                    }))}
+                />
 
-      <InternalNotes
-        houseId={house.id}
-        notes={house.internalNotes.map((n) => ({
-          id: n.id,
-          body: n.body,
-          createdAt: n.createdAt.toISOString(),
-          author: n.author?.name ?? "",
-        }))}
-      />
+          <ForecastPanel
+                  houseId={house.id}
+                  history={house.forecasts.map((h) => ({
+                    from: h.from.toISOString(),
+                    to: h.to.toISOString(),
+                    reason: h.reason,
+                    createdAt: h.createdAt.toISOString(),
+                    notified: Boolean(h.notifiedAt),
+                  }))}
+                />
+        </div>
 
-      <RecentUpdates
-        updates={house.updates.map((u) => ({
-          id: u.id,
-          body: u.body,
-          occurredAt: u.occurredAt.toISOString(),
-          published: Boolean(u.publishedAt),
-        }))}
-      />
+        <div>
+          <InternalNotes
+                  houseId={house.id}
+                  notes={house.internalNotes.map((n) => ({
+                    id: n.id,
+                    body: n.body,
+                    createdAt: n.createdAt.toISOString(),
+                    author: n.author?.name ?? "",
+                  }))}
+                />
+        </div>
+      </HouseTabs>
     </div>
   );
 }

@@ -118,7 +118,7 @@ export default function ForecastPanel({
         </button>
       </div>
 
-      {error && <p role="alert" className="mb-3 text-sm text-red-300">{error}</p>}
+      {error && <p role="alert" className="mb-3 text-sm text-danger">{error}</p>}
 
       {result ? (
         <div className="rounded-lg border border-white/5 bg-dark-card p-5">
@@ -167,14 +167,14 @@ export default function ForecastPanel({
               className={
                 "mb-5 rounded-lg border p-4 " +
                 (result.plan.floatDays < 0
-                  ? "border-red-400/30 bg-red-400/[0.06]"
+                  ? "border-danger/30 bg-danger/[0.06]"
                   : "border-white/5 bg-dark")
               }
             >
               <p
                 className={
                   "font-display text-xl " +
-                  (result.plan.floatDays < 0 ? "text-red-300" : "text-gold")
+                  (result.plan.floatDays < 0 ? "text-danger" : "text-gold")
                 }
               >
                 {result.plan.floatDays < 0
@@ -206,7 +206,7 @@ export default function ForecastPanel({
                       <span
                         className={
                           "mt-0.5 block text-xs " +
-                          (t.slipDays > 0 ? "text-red-300" : "text-white/35")
+                          (t.slipDays > 0 ? "text-danger" : "text-white/35")
                         }
                       >
                         {t.slipDays > 0

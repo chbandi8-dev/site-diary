@@ -64,7 +64,7 @@ export default function DevelopmentList({ developments }: { developments: Develo
         </button>
       </div>
 
-      {error && <p role="alert" className="mb-3 text-sm text-red-300">{error}</p>}
+      {error && <p role="alert" className="mb-3 text-sm text-danger">{error}</p>}
 
       {open && (
         <div className="mb-5 flex flex-col gap-3 rounded-lg border border-white/10 bg-dark-card p-5">

@@ -3,6 +3,7 @@
 import { Menu, Bell, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import ThemeToggle from "./ThemeToggle";
 
 interface AdminHeaderProps {
   onMenuClick?: () => void;
@@ -26,6 +27,8 @@ export default function AdminHeader({ onMenuClick, title = "Dashboard", unreadCo
       </div>
 
       <div className="flex items-center gap-3">
+        <ThemeToggle />
+
         <Link
           href="/"
           target="_blank"

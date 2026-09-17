@@ -95,7 +95,7 @@ export default function EstateBoard({
         <h2 className="font-mono text-[11px] uppercase tracking-[0.13em] text-white/40">
           The board
           {behind > 0 && (
-            <span className="ml-3 rounded-full bg-red-400/15 px-2.5 py-1 text-[10px] text-red-300">
+            <span className="ml-3 rounded-full bg-danger/15 px-2.5 py-1 text-[10px] text-danger">
               {behind} behind
             </span>
           )}
@@ -148,7 +148,7 @@ export default function EstateBoard({
                     >
                       <span className="block truncate text-sm text-white/85">{lot.label}</span>
                       {lot.behindDays !== null && lot.behindDays > 0 && (
-                        <span className="block text-[10px] text-red-300">
+                        <span className="block text-[10px] text-danger">
                           {lot.behindDays}d behind
                         </span>
                       )}

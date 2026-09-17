@@ -52,7 +52,7 @@ export default function FridayPrep({ houses }: { houses: House[] }) {
 
   return (
     <>
-      {error && <p role="alert" className="mb-4 text-sm text-red-300">{error}</p>}
+      {error && <p role="alert" className="mb-4 text-sm text-danger">{error}</p>}
 
       <ol className="flex flex-col gap-3">
         {houses.map((h) => (

@@ -114,7 +114,7 @@ export default function DocumentsPanel({
           margins and subbie paperwork out of it.
         </p>
 
-        {error && <p role="alert" className="mb-3 text-sm text-red-300">{error}</p>}
+        {error && <p role="alert" className="mb-3 text-sm text-danger">{error}</p>}
 
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">

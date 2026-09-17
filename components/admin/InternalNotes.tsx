@@ -63,7 +63,7 @@ export default function InternalNotes({
         Your notes — owners never see these
       </h2>
 
-      {error && <p role="alert" className="mb-3 text-sm text-red-300">{error}</p>}
+      {error && <p role="alert" className="mb-3 text-sm text-danger">{error}</p>}
 
       <div className="rounded-lg border border-white/5 bg-dark-card p-4">
         <label htmlFor={`note-${houseId}`} className="sr-only">

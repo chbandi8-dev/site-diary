@@ -130,7 +130,7 @@ export default function AdminSidebar({ isOpen = true, onClose, unreadCount = 0 }
         <div className="px-3 py-4 border-t border-white/5 space-y-1">
           <button
             onClick={() => signOut({ callbackUrl: "/admin/login" })}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-sm text-sm text-white/50 hover:text-red-400 hover:bg-red-400/5 transition-all"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-sm text-sm text-white/50 hover:text-danger hover:bg-danger/5 transition-all"
           >
             <LogOut size={16} />
             Sign Out

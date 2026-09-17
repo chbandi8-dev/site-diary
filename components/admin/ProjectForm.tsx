@@ -145,12 +145,12 @@ export default function ProjectForm({ project }: ProjectFormProps) {
               <div>
                 <label className="block text-white/50 text-xs uppercase tracking-wider mb-2">Project Title *</label>
                 <input {...register("title")} placeholder="e.g. Modern Harbourside Residence" className="w-full bg-dark border border-white/10 focus:border-gold text-white placeholder-white/20 rounded-sm px-4 py-3 text-sm outline-none transition-colors" />
-                {errors.title && <p className="text-red-400 text-xs mt-1">{errors.title.message}</p>}
+                {errors.title && <p className="text-danger text-xs mt-1">{errors.title.message}</p>}
               </div>
               <div>
                 <label className="block text-white/50 text-xs uppercase tracking-wider mb-2">Short Description * <span className="normal-case text-white/20">(shown in cards, max 200 chars)</span></label>
                 <textarea {...register("shortDescription")} rows={2} placeholder="A brief, compelling summary of the project..." className="w-full bg-dark border border-white/10 focus:border-gold text-white placeholder-white/20 rounded-sm px-4 py-3 text-sm outline-none transition-colors resize-none" />
-                {errors.shortDescription && <p className="text-red-400 text-xs mt-1">{errors.shortDescription.message}</p>}
+                {errors.shortDescription && <p className="text-danger text-xs mt-1">{errors.shortDescription.message}</p>}
               </div>
             </div>
           </div>
@@ -184,7 +184,7 @@ export default function ProjectForm({ project }: ProjectFormProps) {
                 {images.map((img) => (
                   <div key={img} className="flex items-center gap-2 bg-dark p-2 rounded-sm border border-white/5">
                     <span className="flex-1 text-white/50 text-xs truncate">{img}</span>
-                    <button type="button" onClick={() => removeImage(img)} className="text-white/30 hover:text-red-400 transition-colors">
+                    <button type="button" onClick={() => removeImage(img)} className="text-white/30 hover:text-danger transition-colors">
                       <X size={14} />
                     </button>
                   </div>

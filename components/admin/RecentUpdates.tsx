@@ -157,7 +157,7 @@ export default function RecentUpdates({ updates }: { updates: Row[] }) {
             )}
 
             {note?.id === u.id && (
-              <p role="status" className={"mt-2.5 text-sm " + (note.ok ? "text-gold" : "text-red-300")}>
+              <p role="status" className={"mt-2.5 text-sm " + (note.ok ? "text-gold" : "text-danger")}>
                 {note.text}
               </p>
             )}

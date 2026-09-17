@@ -101,7 +101,7 @@ export default function StageTemplates({ templates }: { templates: Template[] })
         </button>
       </div>
 
-      {error && <p role="alert" className="mb-3 text-sm text-red-300">{error}</p>}
+      {error && <p role="alert" className="mb-3 text-sm text-danger">{error}</p>}
       {note && <p role="status" className="mb-3 text-sm text-gold">{note}</p>}
 
       {open && (
@@ -202,7 +202,7 @@ export default function StageTemplates({ templates }: { templates: Template[] })
               onClick={() => remove(t)}
               disabled={busy}
               aria-label={`Remove ${t.name} from the standard list`}
-              className="flex-none rounded p-1.5 text-white/25 hover:bg-white/5 hover:text-red-300 disabled:opacity-40"
+              className="flex-none rounded p-1.5 text-white/25 hover:bg-white/5 hover:text-danger disabled:opacity-40"
             >
               <Trash2 size={14} />
             </button>

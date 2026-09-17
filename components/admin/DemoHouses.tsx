@@ -43,7 +43,7 @@ export default function DemoHouses({ present }: { present: boolean }) {
               : "Adds two made-up houses so you can see the parts that only appear once there is something to show: a decision waiting on an owner, a variation to approve, days lost to weather, and a defects list. Nothing is emailed to anyone."}
           </p>
 
-          {error && <p role="alert" className="mt-3 text-sm text-red-300">{error}</p>}
+          {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
 
           <button
             type="button"

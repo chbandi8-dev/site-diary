@@ -19,8 +19,26 @@ const config: Config = {
         // ── Legacy (admin panel) ─────────────────────────────────
         background: "var(--background)",
         foreground: "var(--foreground)",
-        gold: { DEFAULT: "#C9A84C", light: "#E2C47A", dark: "#9A7A2E" },
-        dark: { DEFAULT: "#1C1C1E", lighter: "#2C2C2E", card: "#242426" },
+        // Variable-backed so the staff side can be flipped to a light
+        // background without touching a single component. `white` is in here
+        // deliberately: the admin is written almost entirely in text-white/45,
+        // border-white/5 and bg-white/[0.04], so remapping what "white" means
+        // inside the admin shell inverts every one of those at once — hovers
+        // and hairlines included — instead of rewriting six hundred classes.
+        // Outside `.admin-shell` these resolve to their original values, so
+        // the marketing site is untouched.
+        gold: {
+          DEFAULT: "rgb(var(--gold) / <alpha-value>)",
+          light: "rgb(var(--gold-light) / <alpha-value>)",
+          dark: "rgb(var(--gold-dark) / <alpha-value>)",
+        },
+        dark: {
+          DEFAULT: "rgb(var(--admin-bg) / <alpha-value>)",
+          lighter: "rgb(var(--admin-raised) / <alpha-value>)",
+          card: "rgb(var(--admin-card) / <alpha-value>)",
+        },
+        white: "rgb(var(--ink) / <alpha-value>)",
+        danger: "rgb(var(--danger) / <alpha-value>)",
         warm: { DEFAULT: "#F5F4F0", dark: "#E8E6E0" },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

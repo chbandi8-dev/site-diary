@@ -104,7 +104,7 @@ export default function ReportItem({
         </button>
       ) : (
         <div className="mt-5 flex flex-col gap-3">
-          {error && <p className="text-sm text-red-300">{error}</p>}
+          {error && <p className="text-sm text-danger">{error}</p>}
 
           <label htmlFor={`reply-${id}`} className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/45">
             Your reply

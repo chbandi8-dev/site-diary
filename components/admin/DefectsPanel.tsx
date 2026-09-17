@@ -106,7 +106,7 @@ export default function DefectsPanel({
         </button>
       </div>
 
-      {error && <p role="alert" className="mb-3 text-sm text-red-300">{error}</p>}
+      {error && <p role="alert" className="mb-3 text-sm text-danger">{error}</p>}
 
       {open && (
         <div className="mb-4 rounded-lg border border-white/5 bg-dark-card p-5">

@@ -104,7 +104,7 @@ export default function DecisionsPanel({
 
       {open && (
         <div className="mb-4 rounded-lg border border-white/5 bg-dark-card p-5">
-          {error && <p role="alert" className="mb-3 text-sm text-red-300">{error}</p>}
+          {error && <p role="alert" className="mb-3 text-sm text-danger">{error}</p>}
 
           <p className="mb-2.5 font-mono text-[11px] uppercase tracking-[0.12em] text-white/45">
             Common ones

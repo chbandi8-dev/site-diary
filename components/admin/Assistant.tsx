@@ -235,7 +235,7 @@ export default function Assistant() {
               {error && (
                 <p
                   role="alert"
-                  className="mb-4 flex items-start gap-2 rounded-lg border border-red-500/25 bg-red-500/[0.07] px-4 py-3 text-sm leading-relaxed text-red-200"
+                  className="mb-4 flex items-start gap-2 rounded-lg border border-danger/25 bg-danger/[0.07] px-4 py-3 text-sm leading-relaxed text-danger"
                 >
                   <AlertCircle size={15} aria-hidden="true" className="mt-0.5 flex-none" />
                   {error}
@@ -418,10 +418,10 @@ export default function Assistant() {
                         <AlertCircle
                           size={15}
                           aria-hidden="true"
-                          className="mt-0.5 flex-none text-red-300"
+                          className="mt-0.5 flex-none text-danger"
                         />
                       )}
-                      <span className={r.ok ? "text-white/75" : "text-red-200"}>
+                      <span className={r.ok ? "text-white/75" : "text-danger"}>
                         {r.ok ? r.done : r.error}
                       </span>
                     </li>
