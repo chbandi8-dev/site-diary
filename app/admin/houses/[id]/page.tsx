@@ -17,6 +17,7 @@ import ForecastPanel from "@/components/admin/ForecastPanel";
 import MessageTrade from "@/components/admin/MessageTrade";
 import HouseStatus from "@/components/admin/HouseStatus";
 import HouseTabs from "@/components/admin/HouseTabs";
+import HouseSettings from "@/components/admin/HouseSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,18 @@ export default async function HouseCapture({ params }: { params: { id: string } 
       address: true,
       suburb: true,
       lotNumber: true,
+      storeys: true,
       development: { select: { name: true } },
+      // Counted so the delete warning names what would actually be destroyed
+      // rather than saying "and related data" like every other app.
+      _count: {
+        select: {
+          updates: { where: { deletedAt: null } },
+          photos: { where: { deletedAt: null } },
+          internalNotes: true,
+          documents: true,
+        },
+      },
       waitingOn: true,
       waitingOnEta: true,
       handoverFrom: true,
@@ -199,6 +211,22 @@ export default async function HouseCapture({ params }: { params: { id: string } 
             {underway.map((s) => s.name).join(" · ")}
           </p>
         )}
+
+        <div className="mt-3">
+          <HouseSettings
+            houseId={house.id}
+            address={house.address}
+            suburb={house.suburb}
+            lotNumber={house.lotNumber}
+            storeys={house.storeys}
+            holdings={{
+              updates: house._count.updates,
+              photos: house._count.photos,
+              notes: house._count.internalNotes,
+              documents: house._count.documents,
+            }}
+          />
+        </div>
       </header>
 
       {/* Five tabs instead of fourteen stacked panels. Everything is still

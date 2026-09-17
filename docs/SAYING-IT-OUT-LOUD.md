@@ -47,6 +47,13 @@ belongs to that house.
    instruction it cannot place on one of his houses comes back not at all,
    rather than landing on the nearest guess.
 
+A **new house is fully editable on the approval screen** — address, suburb,
+owners and storeys — because those are exactly the words dictation gets wrong,
+and a house saved at a mis-heard address used to be unfixable. It is fixable
+now too: **Edit details** on any house page changes the address, suburb, lot
+number and storeys, and deletes the house if it should never have existed
+(typing the address out in full, not tapping a red button).
+
 The approval screen spells out the house in full — never truncated, never
 abbreviated — and marks every action **Owners** or **Only you**, because the
 difference between a private note and a message to a homeowner is the entire

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   AlertCircle, Check, Eye, Loader2, Lock, Mic, Square, Wand2, X,
@@ -39,7 +40,7 @@ import type { ActionPayload, ProposedAction } from "@/lib/assistant-actions";
 
 type Stage = "speak" | "review" | "done";
 
-type Result = { ok: boolean; done?: string; error?: string };
+type Result = { ok: boolean; done?: string; error?: string; houseId?: string };
 
 const EXAMPLES = [
   "Lot 114, frame's done and the roof starts Tuesday",
@@ -143,6 +144,18 @@ export default function Assistant() {
         if (a.id !== id || !a.bodyField) return a;
         return { ...a, payload: { ...a.payload, [a.bodyField]: text } as ActionPayload };
       })
+    );
+  }
+
+  /** A new house is the one action whose every field gets misheard, so all of
+   *  them are editable here rather than only the free text. */
+  function editHouse(id: string, patch: Record<string, unknown>) {
+    setActions((current) =>
+      current.map((a) =>
+        a.id === id && a.payload.kind === "house"
+          ? ({ ...a, payload: { ...a.payload, ...patch } } as ProposedAction)
+          : a
+      )
     );
   }
 
@@ -258,8 +271,9 @@ export default function Assistant() {
                   />
 
                   <p className="mt-2 text-xs leading-relaxed text-white/35">
-                    The microphone on your keyboard works best — tap the box, then the little
-                    mic beside the space bar.
+                    Use the mic on your keyboard — tap the box, then the little mic beside the
+                    space bar. Don&apos;t worry if it mangles an address or a suburb: you get
+                    every detail on the next screen to fix before anything is saved.
                   </p>
 
                   {supported && (
@@ -393,6 +407,61 @@ export default function Assistant() {
                             </div>
                           )}
 
+                          {on && a.payload.kind === "house" && (
+                            <div className="px-4 pb-4">
+                              <SmallField
+                                label="Address"
+                                value={a.payload.address}
+                                onChange={(v) => editHouse(a.id, { address: v })}
+                              />
+                              <SmallField
+                                label="Suburb"
+                                value={a.payload.suburb ?? ""}
+                                onChange={(v) => editHouse(a.id, { suburb: v || null })}
+                              />
+                              {a.payload.owners.length > 0 && (
+                                <SmallField
+                                  label="Owners"
+                                  value={a.payload.owners.map((o) => o.name).join(" & ")}
+                                  onChange={(v) =>
+                                    editHouse(a.id, {
+                                      owners: v
+                                        .split(/\s*&\s*|\s*,\s*/)
+                                        .map((n) => n.trim())
+                                        .filter(Boolean)
+                                        .slice(0, 2)
+                                        .map((name) => ({ name, email: null })),
+                                    })
+                                  }
+                                />
+                              )}
+                              <p className="mb-1.5 mt-3 font-mono text-[10px] uppercase tracking-[0.13em] text-white/30">
+                                Storeys
+                              </p>
+                              <div className="flex gap-2">
+                                {[1, 2].map((n) => {
+                                  const picked = (a.payload as { storeys: number | null }).storeys;
+                                  const chosenN = picked === 2 ? 2 : 1;
+                                  return (
+                                    <button
+                                      key={n}
+                                      type="button"
+                                      onClick={() => editHouse(a.id, { storeys: n })}
+                                      className={
+                                        "min-h-[40px] flex-1 rounded-lg border text-sm transition-colors " +
+                                        (chosenN === n
+                                          ? "border-gold bg-gold/10 text-gold"
+                                          : "border-white/10 text-white/55 hover:border-white/25")
+                                      }
+                                    >
+                                      {n === 1 ? "Single" : "Double"}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
                           {on && a.footnote && (
                             <p className="px-4 pb-4 text-xs leading-relaxed text-white/35">
                               {a.footnote}
@@ -421,8 +490,19 @@ export default function Assistant() {
                           className="mt-0.5 flex-none text-danger"
                         />
                       )}
-                      <span className={r.ok ? "text-white/75" : "text-danger"}>
-                        {r.ok ? r.done : r.error}
+                      <span className="min-w-0 flex-1">
+                        <span className={r.ok ? "text-white/75" : "text-danger"}>
+                          {r.ok ? r.done : r.error}
+                        </span>
+                        {r.ok && r.houseId && (
+                          <Link
+                            href={`/admin/houses/${r.houseId}`}
+                            onClick={close}
+                            className="ml-2 whitespace-nowrap text-xs text-gold underline underline-offset-4"
+                          >
+                            Open
+                          </Link>
+                        )}
                       </span>
                     </li>
                   ))}
@@ -493,5 +573,33 @@ export default function Assistant() {
         </div>
       )}
     </>
+  );
+}
+
+function SmallField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const id = `nh-${label.toLowerCase()}`;
+  return (
+    <div className="mb-2">
+      <label
+        htmlFor={id}
+        className="mb-1 block font-mono text-[10px] uppercase tracking-[0.13em] text-white/30"
+      >
+        {label}
+      </label>
+      <input
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="min-h-[44px] w-full rounded-lg border border-white/10 bg-dark-card px-3 text-sm text-white focus:border-gold focus:outline-none"
+      />
+    </div>
   );
 }
