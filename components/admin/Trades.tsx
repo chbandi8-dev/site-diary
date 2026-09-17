@@ -272,7 +272,9 @@ export default function Trades({ trades }: { trades: Trade[] }) {
       ) : (
         <p className="rounded-lg border border-white/5 bg-dark-card px-5 py-6 text-sm leading-relaxed text-white/45">
           Nobody yet. Add the fifteen or so people you ring every week
-          {canPick ? " — pull them straight from your contacts." : "."}
+          {canPick
+            ? " — pull them straight from your contacts."
+            : ". On an iPhone they have to be typed in: Apple gives web pages no access to contacts. It is a one-off, and worth the five minutes."}
         </p>
       )}
     </div>

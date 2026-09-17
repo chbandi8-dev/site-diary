@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { signDownload } from "@/lib/r2";
 import { requireStaff } from "@/lib/auth-guard";
 import QuickSend from "@/components/admin/QuickSend";
 import HouseLink from "@/components/admin/HouseLink";
@@ -134,6 +135,23 @@ export default async function HouseCapture({ params }: { params: { id: string } 
   });
 
   if (!house) notFound();
+
+  // Recent photos of this house, for sending to a trade. Signed here rather
+  // than in the browser — the bucket is private and these are other people's
+  // homes.
+  const recentPhotos = await prisma.photo.findMany({
+    where: { houseId: house.id, status: "ready", deletedAt: null },
+    select: { id: true, key: true, caption: true, takenAt: true },
+    orderBy: [{ takenAt: "desc" }, { createdAt: "desc" }],
+    take: 12,
+  });
+  const photos = await Promise.all(
+    recentPhotos.map(async (p) => ({
+      id: p.id,
+      caption: p.caption,
+      url: await signDownload(p.key),
+    }))
+  );
 
   // His address book, loaded alongside the house so a message about this build
   // is two taps rather than a trip to another screen and back.
@@ -280,6 +298,7 @@ export default async function HouseCapture({ params }: { params: { id: string } 
         address={house.address}
         suburb={house.suburb}
         trades={trades}
+        photos={photos}
         underway={house.stages.filter((s) => s.status === "in_progress").map((s) => s.name)}
         openDefects={house.defects
           .filter((d) => d.status !== "resolved")
