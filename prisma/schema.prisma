@@ -262,12 +262,53 @@ enum DocumentStatus {
   ready
 }
 
+/// An estate, a development, or any group of houses with one client behind them.
+///
+/// Individual owner-builds have no project — they stand alone, which is the
+/// shape the whole app was built around. This is for the other kind of work: a
+/// developer or agent with eighteen lots, where the client is one person for
+/// all of them and the end buyers may not exist yet.
+///
+/// Grouping is what makes the volume work tractable: a board for the estate
+/// rather than eighteen pages, one stage marked across six lots at once, and
+/// one roll-up to the developer instead of eighteen emails.
+model Development {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String
+  /// The developer or agent — one contact for the whole lot.
+  client      String?
+  clientEmail String? @map("client_email")
+  clientPhone String? @map("client_phone")
+  /// Estate release or stage, when the developer numbers them: "Stage 3".
+  release     String?
+  notes       String?
+
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  houses House[]
+
+  @@map("developments")
+}
+
 /// One build. The unit everything else hangs off, and the unit of access
 /// control — an owner can reach exactly the houses joined to them.
 model House {
-  id             String      @id @default(uuid()) @db.Uuid
-  address        String
-  suburb         String?
+  id String @id @default(uuid()) @db.Uuid
+
+  /// Kept required even on estate work, where a street address does not exist
+  /// for months. He puts the lot in here — "Lot 214" — and renames it once the
+  /// council allocates a number. Making it optional would have meant every
+  /// email, page heading and notification growing a fallback, for a field that
+  /// is only briefly unknown.
+  address String
+  suburb  String?
+
+  /// Estate work only. Sorts the board in the order the lots actually run,
+  /// which is never alphabetical by address.
+  lotNumber      String?     @map("lot_number")
+  developmentId  String?     @map("development_id") @db.Uuid
   storeys        Int         @default(1)
   status         HouseStatus @default(pre_start)
   contractCents  Int?        @map("contract_cents")
@@ -311,6 +352,7 @@ model House {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  development   Development?       @relation(fields: [developmentId], references: [id], onDelete: SetNull)
   owners        HouseOwner[]
   stages        HouseStage[]
   updates       Update[]
@@ -329,6 +371,7 @@ model House {
   accessLinks   AccessLink[]
 
   @@index([status])
+  @@index([developmentId, lotNumber])
   @@map("houses")
 }
 
@@ -476,6 +519,12 @@ model HouseStage {
   /// planned durations and the working-day calendar (wet days, public holidays,
   /// the Christmas shutdown). Stored only so rendering is cheap and consistent.
   estimatedEnd DateTime? @map("estimated_end") @db.Date
+
+  /// When this stage SHOULD finish to hit the contracted handover date, worked
+  /// backwards from it. Distinct from `estimatedEnd`, which is when it will
+  /// finish at the current rate — the gap between the two is the slip, and the
+  /// slip is the only number a site manager actually needs.
+  dueBy DateTime? @map("due_by") @db.Date
 
   startedAt   DateTime? @map("started_at") @db.Timestamptz(3)
   completedAt DateTime? @map("completed_at") @db.Timestamptz(3)

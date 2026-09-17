@@ -6,11 +6,15 @@ import { CalendarClock, Loader2, TrendingUp } from "lucide-react";
 
 type StageForecast = { id: string; name: string; estimatedEnd: string | null; movedFrom: string | null };
 
+type StageTarget = { id: string; name: string; dueBy: string; slipDays: number | null };
+
 type Result = {
   stages: StageForecast[];
   handoverFrom: string | null;
   handoverTo: string | null;
   basis: string[];
+  target: string | null;
+  plan: { targets: StageTarget[]; floatDays: number; basis: string[] } | null;
   current: { handoverFrom: string | null; handoverTo: string | null };
 };
 
@@ -40,6 +44,7 @@ export default function ForecastPanel({
 }) {
   const router = useRouter();
   const [result, setResult] = useState<Result | null>(null);
+  const [target, setTarget] = useState("");
   const [reason, setReason] = useState("");
   const [moveHandover, setMoveHandover] = useState(true);
   const [notifyOwners, setNotifyOwners] = useState(false);
@@ -50,10 +55,13 @@ export default function ForecastPanel({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/pm/forecast?houseId=${houseId}`);
+      const res = await fetch(
+        `/api/pm/forecast?houseId=${houseId}${target ? `&target=${target}` : ""}`
+      );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Couldn't work that out.");
       setResult(data);
+      if (data.target && !target) setTarget(String(data.target).slice(0, 10));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Couldn't work that out.");
     } finally {
@@ -70,6 +78,7 @@ export default function ForecastPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           houseId,
+          targetHandover: target || undefined,
           reason: reason.trim() || undefined,
           moveHandover,
           notifyOwners: moveHandover && notifyOwners,
@@ -128,15 +137,84 @@ export default function ForecastPanel({
             )}
           </div>
 
+          {/* The date the contract already committed to. Everything below is
+              measured against it, so it sits above them. */}
+          <div className="mb-5 flex flex-wrap items-end gap-3 border-t border-white/5 pt-5">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="fc-target" className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/45">
+                Date you&apos;ve promised
+              </label>
+              <input
+                id="fc-target"
+                type="date"
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                className="rounded-lg border border-white/10 bg-dark px-3 py-2.5 text-white focus:border-gold focus:outline-none"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={recalculate}
+              disabled={busy}
+              className="min-h-[44px] rounded-lg border border-white/15 px-4 text-sm text-white/70 hover:border-white/35 disabled:opacity-40"
+            >
+              Work it back
+            </button>
+          </div>
+
+          {result.plan && (
+            <div
+              className={
+                "mb-5 rounded-lg border p-4 " +
+                (result.plan.floatDays < 0
+                  ? "border-red-400/30 bg-red-400/[0.06]"
+                  : "border-white/5 bg-dark")
+              }
+            >
+              <p
+                className={
+                  "font-display text-xl " +
+                  (result.plan.floatDays < 0 ? "text-red-300" : "text-gold")
+                }
+              >
+                {result.plan.floatDays < 0
+                  ? `${Math.abs(result.plan.floatDays)} working days behind`
+                  : `${result.plan.floatDays} working days spare`}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-white/45">
+                {result.plan.basis[result.plan.basis.length - 1]}
+              </p>
+            </div>
+          )}
+
           <ul className="mb-5 flex flex-col">
             {result.stages.slice(0, 8).map((s) => (
               <li key={s.id} className="flex items-baseline justify-between gap-4 border-t border-white/5 py-2.5">
                 <span className="min-w-0 flex-1 truncate text-sm text-white/70">{s.name}</span>
-                <span className="flex-none text-sm text-white/85">
+                <span className="flex-none text-right text-sm text-white/85">
                   {day(s.estimatedEnd)}
                   {s.movedFrom && (
                     <span className="ml-2 text-xs text-gold">was {day(s.movedFrom)}</span>
                   )}
+                  {(() => {
+                    const t = result.plan?.targets.find((x) => x.id === s.id);
+                    if (!t || t.slipDays === null) return null;
+                    // Only a real slip is called out. A day either way is noise
+                    // on a programme measured in months.
+                    if (Math.abs(t.slipDays) < 2) return null;
+                    return (
+                      <span
+                        className={
+                          "mt-0.5 block text-xs " +
+                          (t.slipDays > 0 ? "text-red-300" : "text-white/35")
+                        }
+                      >
+                        {t.slipDays > 0
+                          ? `${t.slipDays}d late — due ${day(t.dueBy)}`
+                          : `${-t.slipDays}d ahead of ${day(t.dueBy)}`}
+                      </span>
+                    );
+                  })()}
                 </span>
               </li>
             ))}
@@ -237,7 +315,9 @@ export default function ForecastPanel({
           <TrendingUp size={14} aria-hidden="true" className="mt-0.5 flex-none" />
           Works out when each remaining stage finishes, from where the build is now —
           allowing for weekends, public holidays, the Christmas shutdown and the days this
-          house has actually lost to weather. Nothing changes until you save it.
+          house has actually lost to weather. Put in the date you&apos;ve promised and it
+          also works backwards, so every stage gets a date it has to hit and you can see
+          which one is slipping. Nothing changes until you save it.
         </p>
       )}
 

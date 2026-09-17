@@ -306,4 +306,143 @@ export function forecast(input: {
   return { stages, handoverFrom, handoverTo, basis };
 }
 
-export const forecastInternals = { addWorkingDays, workingDaysBetween, isWorkingDay, nswHolidays };
+/** Walks the calendar backwards, skipping anything that cannot be worked. */
+function subWorkingDays(from: Date, days: number): Date {
+  const cursor = utcDay(from);
+  let remaining = Math.max(Math.round(days), 0);
+  let guard = 0;
+  while (remaining > 0 && guard < 5000) {
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+    if (isWorkingDay(cursor)) remaining--;
+    guard++;
+  }
+  return cursor;
+}
+
+export type StageTarget = {
+  id: string;
+  name: string;
+  /** When this stage has to finish for the target date to hold. */
+  dueBy: Date;
+  /** Working days between this target and where the forecast says it lands. */
+  slipDays: number | null;
+};
+
+export type BackwardPlan = {
+  targets: StageTarget[];
+  /** Negative when the programme is already behind before it starts. */
+  floatDays: number;
+  basis: string[];
+};
+
+/**
+ * Working backwards from a date the contract already committed to.
+ *
+ * The forward forecast answers "when will this finish". This answers the
+ * question a site manager is actually asked, which is the other way round:
+ * the date is fixed, so what has to be true in August for March to hold.
+ *
+ * Both together are the useful thing. A stage carries a date it SHOULD finish
+ * and a date it WILL finish, and the gap between them is the slip — which is
+ * the only number worth putting in front of him, because it is the one he can
+ * still do something about.
+ *
+ * It will happily produce dates in the past. That is not a failure: it means
+ * the target was never achievable at these durations, and he is better off
+ * seeing that in week one than in month eight.
+ */
+export function backwardPlan(input: {
+  target: Date;
+  stages: ForecastStage[];
+  /** Forward estimates, to measure the gap against. */
+  forecast?: StageForecast[];
+  wetDaysLost?: number;
+  workingDaysElapsed?: number;
+  today?: Date;
+}): BackwardPlan {
+  const today = utcDay(input.today ?? new Date());
+  const basis: string[] = [];
+
+  const ordered = [...input.stages].sort((a, b) => a.position - b.position);
+  const remaining = ordered.filter(
+    (s) => s.status !== "complete" && s.status !== "not_applicable"
+  );
+
+  if (remaining.length === 0) {
+    return { targets: [], floatDays: 0, basis: ["Every stage is complete."] };
+  }
+
+  // The same weather allowance the forward pass uses. A backward plan built on
+  // perfect weather would set targets he can only hit in a dry winter, and a
+  // target nobody can hit is one he stops reading.
+  const weather = weatherAllowance(
+    input.wetDaysLost ?? 0,
+    input.workingDaysElapsed ?? 0
+  );
+  basis.push(weather.note);
+
+  // Handover is excluded from the walk: the target date IS handover, so the
+  // stage before it must finish on the target, not a fortnight earlier.
+  const targets: StageTarget[] = [];
+  let cursor = utcDay(input.target);
+
+  for (let i = remaining.length - 1; i >= 0; i--) {
+    const stage = remaining[i];
+    targets.unshift({
+      id: stage.id,
+      name: stage.name,
+      dueBy: new Date(cursor),
+      slipDays: null,
+    });
+
+    // A stage already underway only has its remaining days left to find. The
+    // forward pass has always done this; the backward pass charging the full
+    // duration made the two disagree — float reporting "behind" while every
+    // stage reported "spare", which is the fastest way to make him stop
+    // believing either number.
+    let cost = (stage.plannedDays ?? 0) * weather.factor;
+    if (stage.status === "in_progress" && stage.startedAt) {
+      const done = workingDaysBetween(utcDay(stage.startedAt), today);
+      cost = Math.max(cost - done, 1);
+    }
+
+    cursor = subWorkingDays(cursor, cost);
+  }
+
+  // Everything left has to start by this date. Float is what is spare between
+  // now and then — negative means the run is already longer than the time.
+  const mustStartBy = cursor;
+  const floatDays =
+    mustStartBy >= today
+      ? workingDaysBetween(today, mustStartBy)
+      : -workingDaysBetween(mustStartBy, today);
+
+  basis.push(
+    floatDays >= 0
+      ? `${floatDays} working days spare against the target date.`
+      : `The remaining stages need ${Math.abs(floatDays)} more working days than there are before the target date.`
+  );
+
+  if (input.forecast) {
+    const landing = new Map(input.forecast.map((f) => [f.id, f.estimatedEnd]));
+    for (const target of targets) {
+      const willBe = landing.get(target.id);
+      if (!willBe) continue;
+      const end = utcDay(willBe);
+      target.slipDays =
+        end > target.dueBy
+          ? workingDaysBetween(target.dueBy, end)
+          : -workingDaysBetween(end, target.dueBy);
+    }
+  }
+
+  return { targets, floatDays, basis };
+}
+
+export const forecastInternals = {
+  addWorkingDays,
+  subWorkingDays,
+  workingDaysBetween,
+  isWorkingDay,
+  nswHolidays,
+};

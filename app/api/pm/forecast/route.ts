@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { forecast, type ForecastStage } from "@/lib/forecast";
+import { forecast, backwardPlan, type ForecastStage } from "@/lib/forecast";
 import { queue, ownersOf, deliverNow } from "@/lib/notify";
 import { siteUrl } from "@/lib/site-url";
 import { z } from "zod";
@@ -22,13 +22,14 @@ export const dynamic = "force-dynamic";
  * shows what was estimated, when, and why it moved.
  */
 
-async function load(houseId: string) {
+async function load(houseId: string, overrideTarget?: Date) {
   const house = await prisma.house.findUnique({
     where: { id: houseId },
     select: {
       id: true,
       address: true,
       startDate: true,
+      targetHandover: true,
       handoverFrom: true,
       handoverTo: true,
       stages: {
@@ -49,14 +50,28 @@ async function load(houseId: string) {
   });
   if (!house) return null;
 
-  return {
-    house,
-    result: forecast({
-      startDate: house.startDate,
-      stages: house.stages as ForecastStage[],
-      wetDaysLost: house._count.weatherDays,
-    }),
-  };
+  const target = overrideTarget ?? house.targetHandover ?? null;
+
+  const result = forecast({
+    startDate: house.startDate,
+    stages: house.stages as ForecastStage[],
+    wetDaysLost: house._count.weatherDays,
+  });
+
+  // Only when a date has actually been committed to. Inventing a target so the
+  // screen has something to show would produce a slip figure measured against
+  // nothing, which is worse than no figure.
+  const plan = target
+    ? backwardPlan({
+        target,
+        stages: house.stages as ForecastStage[],
+        forecast: result.stages,
+        wetDaysLost: house._count.weatherDays,
+        workingDaysElapsed: 0,
+      })
+    : null;
+
+  return { house, result, plan };
 }
 
 export async function GET(req: NextRequest) {
@@ -67,7 +82,14 @@ export async function GET(req: NextRequest) {
   const houseId = req.nextUrl.searchParams.get("houseId");
   if (!houseId) return NextResponse.json({ error: "houseId is required" }, { status: 400 });
 
-  const loaded = await load(houseId);
+  // Lets him try a date before committing to it — "what would we have to hit
+  // to make March work" is the question, and it should not require saving a
+  // date he has not agreed to yet.
+  const trying = req.nextUrl.searchParams.get("target");
+  const loaded = await load(
+    houseId,
+    trying ? new Date(`${trying}T00:00:00.000Z`) : undefined
+  );
   if (!loaded) return NextResponse.json({ error: "House not found" }, { status: 404 });
 
   return NextResponse.json({
@@ -75,6 +97,8 @@ export async function GET(req: NextRequest) {
     handoverFrom: loaded.result.handoverFrom,
     handoverTo: loaded.result.handoverTo,
     basis: loaded.result.basis,
+    target: loaded.house.targetHandover,
+    plan: loaded.plan,
     current: {
       handoverFrom: loaded.house.handoverFrom,
       handoverTo: loaded.house.handoverTo,
@@ -84,6 +108,8 @@ export async function GET(req: NextRequest) {
 
 const apply = z.object({
   houseId: z.string().uuid(),
+  /** The contracted handover date, if he is setting or changing it. */
+  targetHandover: z.string().date().optional(),
   reason: z.string().trim().max(300).optional(),
   /** Move the house's published handover window to the forecast one. */
   moveHandover: z.boolean().default(false),
@@ -98,21 +124,38 @@ export async function POST(req: NextRequest) {
 
   const parsed = apply.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
-  const { houseId, reason, moveHandover, notifyOwners } = parsed.data;
+  const { houseId, reason, moveHandover, notifyOwners, targetHandover } = parsed.data;
 
-  const loaded = await load(houseId);
+  const loaded = await load(
+    houseId,
+    targetHandover ? new Date(`${targetHandover}T00:00:00.000Z`) : undefined
+  );
   if (!loaded) return NextResponse.json({ error: "House not found" }, { status: 404 });
   const { house, result } = loaded;
 
   const moved = result.stages.filter((s) => s.movedFrom);
 
+  const dueBy = new Map((loaded.plan?.targets ?? []).map((t) => [t.id, t.dueBy]));
+
   await prisma.$transaction(async (tx) => {
+    if (targetHandover) {
+      await tx.house.update({
+        where: { id: house.id },
+        data: { targetHandover: new Date(`${targetHandover}T00:00:00.000Z`) },
+      });
+    }
+
     for (const stage of result.stages) {
       if (!stage.estimatedEnd) continue;
 
       await tx.houseStage.update({
         where: { id: stage.id },
-        data: { estimatedEnd: stage.estimatedEnd },
+        data: {
+          estimatedEnd: stage.estimatedEnd,
+          // Stored so "what is due this week" across every house is one query
+          // rather than twenty-five forecasts run on a dashboard render.
+          ...(dueBy.has(stage.id) ? { dueBy: dueBy.get(stage.id) } : {}),
+        },
       });
 
       // Only genuine movements are recorded. Writing a row every recalculation
