@@ -84,6 +84,12 @@ export default async function HousesPage() {
           <AddHouse stageNames={stageNames} />
           <div className="flex items-center gap-4">
             <Link
+              href="/admin/developments"
+              className="text-sm text-white/45 underline underline-offset-4 hover:text-white"
+            >
+              Developments
+            </Link>
+            <Link
               href="/admin/trades"
               className="text-sm text-white/45 underline underline-offset-4 hover:text-white"
             >

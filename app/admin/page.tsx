@@ -4,7 +4,7 @@ import { requireStaff } from "@/lib/auth-guard";
 import { money } from "@/lib/money";
 import {
   HardHat, Inbox, Clock, FileSignature, CloudRain, CalendarCheck,
-  ArrowRight, Check, CircleAlert, PencilLine, EyeOff,
+  ArrowRight, Check, CircleAlert, PencilLine, EyeOff, CalendarClock,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +36,9 @@ export default async function Today() {
   await requireStaff();
 
   const weekAgo = new Date(Date.now() - 7 * 86_400_000);
+  // Ten days, not seven: a Friday glance should still catch the start of the
+  // week after, which is when a booking would have to be made.
+  const horizon = new Date(Date.now() + 10 * 86_400_000);
 
   const houses = await prisma.house.findMany({
     where: { status: { not: "handed_over" } },
@@ -88,9 +91,29 @@ export default async function Today() {
   });
 
   const now = Date.now();
-  const updatesThisWeek = await prisma.update.count({
-    where: { publishedAt: { gte: weekAgo }, deletedAt: null },
-  });
+
+  const [updatesThisWeek, dueSoon] = await Promise.all([
+    prisma.update.count({ where: { publishedAt: { gte: weekAgo }, deletedAt: null } }),
+    // What the programme says is due shortly, read from the stored due dates
+    // rather than recomputed: twenty-five forecasts on a dashboard render is
+    // not a dashboard. One query across every house, not one per house.
+    prisma.houseStage.findMany({
+      where: {
+        dueBy: { not: null, lte: horizon },
+        status: { notIn: ["complete", "not_applicable"] },
+        house: { status: { not: "handed_over" } },
+      },
+      select: {
+        id: true,
+        name: true,
+        dueBy: true,
+        houseId: true,
+        house: { select: { address: true, lotNumber: true } },
+      },
+      orderBy: { dueBy: "asc" },
+      take: 40,
+    }),
+  ]);
 
   // Everything that wants him. Built per house, then flattened and sorted, so
   // the list reads as a to-do rather than a directory he has to scan.
@@ -169,6 +192,32 @@ export default async function Today() {
         icon: Clock,
       });
     }
+  }
+
+  // The programme's own to-do list. Derived rather than kept by hand: a manual
+  // list is one more thing to feed and goes stale in a fortnight like every
+  // other one. These cannot, because they come from dates already held.
+  for (const stage of dueSoon) {
+    if (!stage.dueBy) continue;
+    const days = Math.round((stage.dueBy.getTime() - now) / 86_400_000);
+    tasks.push({
+      houseId: stage.houseId,
+      address: stage.house.lotNumber ? `Lot ${stage.house.lotNumber}` : stage.house.address,
+      // Past its promised date ranks with his own overdue work. Merely coming
+      // up sits below it — that is a heads-up, not a job.
+      urgency: days < 0 ? 2 : 6,
+      label:
+        days < 0
+          ? `${stage.name} is ${Math.abs(days)} days past due`
+          : days === 0
+            ? `${stage.name} is due today`
+            : `${stage.name} due in ${days} day${days === 1 ? "" : "s"}`,
+      detail:
+        days < 0
+          ? "Behind the date you promised — this is where the slip is"
+          : "To hold the handover date you've given them",
+      icon: CalendarClock,
+    });
   }
 
   tasks.sort((a, b) => a.urgency - b.urgency || a.address.localeCompare(b.address));
