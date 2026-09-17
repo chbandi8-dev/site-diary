@@ -476,7 +476,7 @@ export default async function Today() {
               ? "No handover dates set yet"
               : behindTotal === 0
                 ? "Every programme on track"
-                : `${behindTotal} slipping — tap to see them`
+                : `${behindTotal} slipping`
           }
           meter={onProgramme === 0 ? null : { filled: onTrackTotal, total: onProgramme }}
         />
@@ -503,8 +503,8 @@ export default async function Today() {
           value={updatesThisWeek}
           foot={
             updatesLastWeek === 0
-              ? "This week · nothing last week"
-              : `This week · ${signed(updatesThisWeek - updatesLastWeek)} on last week`
+              ? "Nothing sent last week"
+              : `${signed(updatesThisWeek - updatesLastWeek)} on last week`
           }
         />
       </div>
