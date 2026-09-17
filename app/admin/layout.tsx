@@ -5,6 +5,7 @@ import { SessionProvider } from "next-auth/react";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import AdminHeader from "@/components/admin/AdminHeader";
 import OfflineBar from "@/components/admin/OfflineBar";
+import Assistant from "@/components/admin/Assistant";
 
 function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -20,9 +21,12 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
           onMenuClick={() => setSidebarOpen(true)}
         />
         <OfflineBar />
-        <main className="flex-1 p-6 overflow-auto">
+        {/* pb-28 keeps the floating "Say it" button from sitting on top of
+            whatever is at the bottom of a page. */}
+        <main className="flex-1 overflow-auto p-4 pb-28 sm:p-6 sm:pb-28">
           {children}
         </main>
+        <Assistant />
       </div>
     </div>
   );
