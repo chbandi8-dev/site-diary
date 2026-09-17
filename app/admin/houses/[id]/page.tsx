@@ -13,6 +13,7 @@ import DocumentsPanel from "@/components/admin/DocumentsPanel";
 import WetDays from "@/components/admin/WetDays";
 import DefectsPanel from "@/components/admin/DefectsPanel";
 import ForecastPanel from "@/components/admin/ForecastPanel";
+import MessageTrade from "@/components/admin/MessageTrade";
 import HouseStatus from "@/components/admin/HouseStatus";
 
 export const dynamic = "force-dynamic";
@@ -133,6 +134,17 @@ export default async function HouseCapture({ params }: { params: { id: string } 
   });
 
   if (!house) notFound();
+
+  // His address book, loaded alongside the house so a message about this build
+  // is two taps rather than a trip to another screen and back.
+  const trades = await prisma.trade.findMany({
+    where: { archivedAt: null },
+    orderBy: [{ trade: "asc" }, { name: "asc" }],
+    select: {
+      id: true, name: true, company: true, trade: true,
+      phone: true, email: true, notes: true,
+    },
+  });
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -262,6 +274,20 @@ export default async function HouseCapture({ params }: { params: { id: string } 
           createdAt: h.createdAt.toISOString(),
           notified: Boolean(h.notifiedAt),
         }))}
+      />
+
+      <MessageTrade
+        address={house.address}
+        suburb={house.suburb}
+        trades={trades}
+        underway={house.stages.filter((s) => s.status === "in_progress").map((s) => s.name)}
+        openDefects={house.defects
+          .filter((d) => d.status !== "resolved")
+          .map((d) => ({
+            reference: d.reference,
+            location: d.location,
+            description: d.description,
+          }))}
       />
 
       <DefectsPanel

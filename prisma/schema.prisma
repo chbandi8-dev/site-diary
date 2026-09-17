@@ -983,6 +983,35 @@ model WeatherDay {
   @@map("weather_days")
 }
 
+/// The trades he actually rings.
+///
+/// Not a subcontractor portal — they would never sign into one. This is an
+/// address book with a WhatsApp button on it: the fifteen or twenty people a
+/// residential PM works with every week, so a message about a specific house
+/// takes one tap instead of scrolling a phone's contacts for "Dave Bricks 2".
+///
+/// Kept separate from the owner side entirely. A trade never sees a build page,
+/// and nothing here is ever visible to a homeowner — who is on site, what they
+/// charge, and what he thinks of them is his business.
+model Trade {
+  id      String  @id @default(uuid()) @db.Uuid
+  name    String
+  company String?
+  /// What they do, in his words: "bricklayer", "sparky", "waterproofer".
+  trade   String
+  phone   String?
+  email   String?
+  /// His own note. Never leaves the staff side.
+  notes   String?
+
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([trade])
+  @@map("trades")
+}
+
 /// Append-only audit for the two records that become evidence.
 ///
 /// `Variation.status` and `Decision.answeredAt` mutated in place destroy the
