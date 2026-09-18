@@ -177,6 +177,39 @@ export async function currentViewer(
  * house. Someone whose access was revoked stays revoked: re-registering must
  * not be a way to undo the only removal control there is.
  */
+/**
+ * The record he made for this person, if there is one to attach an email to.
+ *
+ * Only ever within this house, and only ever a record with no address on it —
+ * an owner who has already registered is never reassigned, whatever name gets
+ * typed.
+ *
+ * Matching is by name first, because he types the names he was given. Failing
+ * that, a single un-emailed person on the house is claimed on the reasonable
+ * reading that they are the one he meant: he only enters the people he knows
+ * about. Two or more unclaimed names and no match, and it makes a new record
+ * rather than guessing — putting one family's updates in front of another is
+ * far worse than a duplicate row he can merge by fixing an address.
+ */
+async function claimPlaceholder(houseId: string, name: string): Promise<string | null> {
+  const waiting = await prisma.houseOwner.findMany({
+    where: { houseId, revokedAt: null, owner: { email: null } },
+    select: { ownerId: true, owner: { select: { name: true } } },
+  });
+  if (waiting.length === 0) return null;
+
+  const wanted = name.trim().toLowerCase();
+  const first = wanted.split(/\s+/)[0];
+
+  const byName = waiting.find((w) => {
+    const held = w.owner.name.trim().toLowerCase();
+    return held === wanted || held.split(/\s+/)[0] === first;
+  });
+  if (byName) return byName.ownerId;
+
+  return waiting.length === 1 ? waiting[0].ownerId : null;
+}
+
 export async function registerViewer(
   houseId: string,
   name: string,
@@ -199,12 +232,28 @@ export async function registerViewer(
       data: { name: name.trim(), registeredAt: new Date() },
     });
   } else {
-    const created = await prisma.owner.create({
-      data: { name: name.trim(), email: normalised, registeredAt: new Date() },
-      select: { id: true },
-    });
-    ownerId = created.id;
-    await prisma.houseOwner.create({ data: { houseId, ownerId } });
+    // Nobody on this house holds that address yet. Before making a new record,
+    // look for the one he already typed in: he adds a house knowing the
+    // owners' names and not their emails, so "Priya Raman, no address" is
+    // sitting there waiting for exactly this moment. Attaching to it is what
+    // makes his entry worth making — otherwise he gets two rows for one
+    // person and updates that go to neither.
+    const claimed = await claimPlaceholder(houseId, name);
+
+    if (claimed) {
+      ownerId = claimed;
+      await prisma.owner.update({
+        where: { id: ownerId },
+        data: { name: name.trim(), email: normalised, registeredAt: new Date() },
+      });
+    } else {
+      const created = await prisma.owner.create({
+        data: { name: name.trim(), email: normalised, registeredAt: new Date() },
+        select: { id: true },
+      });
+      ownerId = created.id;
+      await prisma.houseOwner.create({ data: { houseId, ownerId } });
+    }
   }
 
   const owner = { id: ownerId };

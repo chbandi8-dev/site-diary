@@ -416,7 +416,15 @@ model Owner {
   id            String   @id @default(uuid()) @db.Uuid
   authUserId    String?  @unique @map("auth_user_id") @db.Uuid
   name          String
-  email         String   @unique
+  /// Optional, and usually empty at first.
+  ///
+  /// He adds a house knowing the owners' names and often their mobile, and not
+  /// their email — nobody hands over an email address at a pre-start meeting.
+  /// The address arrives when they open their link and register themselves,
+  /// which is also the only version of it anyone has actually confirmed.
+  /// Nullable unique: Postgres allows any number of NULLs in a unique index,
+  /// so every un-emailed person coexists happily.
+  email         String?  @unique
   phone         String?
   notifyByEmail Boolean  @default(true) @map("notify_by_email")
   notifyBySms   Boolean  @default(false) @map("notify_by_sms")

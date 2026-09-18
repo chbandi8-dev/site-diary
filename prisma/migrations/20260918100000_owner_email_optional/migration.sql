@@ -1,0 +1,11 @@
+-- An owner without an email address.
+--
+-- He adds a house knowing the owners' names and often their mobile, and not
+-- their email — nobody hands one over at a pre-start meeting. Until now a name
+-- with no address was silently dropped on the way in, so the person he had
+-- just typed simply did not appear, and when they later registered themselves
+-- a second, unrelated record was created.
+--
+-- Nullable unique is safe: Postgres allows any number of NULLs in a unique
+-- index, so every un-emailed person coexists.
+ALTER TABLE "owners" ALTER COLUMN "email" DROP NOT NULL;

@@ -70,6 +70,10 @@ export default function HouseLink({
   registered: Registered[];
 }) {
   const router = useRouter();
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", email: "", phone: "" });
@@ -143,6 +147,32 @@ export default function HouseLink({
         body: JSON.stringify({ houseId, ownerId, revoked }),
       });
       router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addPerson() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/pm/owners", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          houseId,
+          name: newName.trim(),
+          phone: newPhone.trim() || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "That didn't save.");
+      setNewName("");
+      setNewPhone("");
+      setAdding(false);
+      router.refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "That didn't save.");
     } finally {
       setBusy(false);
     }
@@ -229,16 +259,64 @@ export default function HouseLink({
         )}
       </div>
 
-      <h3 className="mb-3 mt-8 font-mono text-[11px] uppercase tracking-[0.13em] text-white/40">
-        Signed up for updates
-      </h3>
+      <div className="mb-3 mt-8 flex items-baseline justify-between gap-3">
+        <h3 className="font-mono text-[11px] uppercase tracking-[0.13em] text-white/40">
+          The owners
+        </h3>
+        <button
+          type="button"
+          onClick={() => setAdding((a) => !a)}
+          className="text-sm text-white/45 underline underline-offset-4 hover:text-white"
+        >
+          {adding ? "Cancel" : "Add someone"}
+        </button>
+      </div>
 
-      {registered.length === 0 ? (
+      {/* A name is all he has at a pre-start meeting, and it is enough. The
+          email fills itself in when they open the link and register — it
+          attaches to this record rather than making a second one. */}
+      {adding && (
+        <div className="mb-3 rounded-lg border border-white/10 bg-dark-card p-5">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <input
+              aria-label="Their name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Name"
+              className="min-h-[48px] w-full rounded-lg border border-white/10 bg-dark px-4 text-white placeholder:text-white/25 focus:border-gold focus:outline-none"
+            />
+            <input
+              aria-label="Their mobile"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              value={newPhone}
+              onChange={(e) => setNewPhone(e.target.value)}
+              placeholder="Mobile (optional)"
+              className="min-h-[48px] w-full rounded-lg border border-white/10 bg-dark px-4 text-white placeholder:text-white/25 focus:border-gold focus:outline-none"
+            />
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-white/35">
+            Their email arrives on its own when they open the link. A mobile turns the
+            WhatsApp button on straight away.
+          </p>
+          <button
+            type="button"
+            onClick={addPerson}
+            disabled={busy || newName.trim().length === 0}
+            className="mt-3 min-h-[46px] rounded-lg bg-gold px-5 text-sm font-semibold text-dark disabled:opacity-35"
+          >
+            Add them
+          </button>
+        </div>
+      )}
+
+      {registered.length === 0 && !adding ? (
         <p className="rounded-lg border border-white/5 bg-dark-card px-5 py-5 text-sm leading-relaxed text-white/45">
-          Nobody yet. They can see the build as soon as they tap the link — this fills in when
-          someone adds their email so they get told about new updates.
+          Nobody yet. Add them by name — their email fills itself in when they open the
+          link you send.
         </p>
-      ) : (
+      ) : registered.length === 0 ? null : (
         <ul className="flex flex-col gap-2">
           {registered.map((r) => {
             const hasNumber = Boolean(toWhatsAppNumber(r.phone));

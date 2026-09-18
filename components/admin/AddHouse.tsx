@@ -25,7 +25,7 @@ type Draft = {
   address: string;
   suburb: string | null;
   storeys: 1 | 2 | null;
-  owners: { name: string; email: string | null }[];
+  owners: { name: string; email: string | null; phone?: string | null }[];
   currentStage: string | null;
   waitingOn: string | null;
   waitingOnDate: string | null;
@@ -104,7 +104,13 @@ export default function AddHouse({ stageNames }: { stageNames: string[] }) {
           address: draft.address,
           suburb: draft.suburb || undefined,
           storeys: draft.storeys ?? 1,
-          owners: draft.owners.filter((o) => o.name.trim()),
+          owners: draft.owners
+            .filter((o) => o.name.trim())
+            .map((o) => ({
+              name: o.name.trim(),
+              email: o.email || undefined,
+              phone: o.phone || undefined,
+            })),
           currentStage: draft.currentStage || undefined,
           waitingOn: draft.waitingOn || undefined,
           waitingOnDate: draft.waitingOnDate || undefined,
@@ -347,9 +353,9 @@ export default function AddHouse({ stageNames }: { stageNames: string[] }) {
             <div className="flex flex-col gap-2">
               <span className={label}>Owners</span>
               <p className="text-xs leading-relaxed text-white/35">
-                Optional, and usually skipped. Owners add their own name and email when
-                they open the link you send them — which is why a name without an email
-                address here isn&apos;t saved.
+                A name is enough. Their email arrives on its own when they open the link
+                you send them — add a mobile if you have one and the WhatsApp button
+                turns on straight away.
               </p>
               {[0, 1].map((i) => (
                 <div key={i} className="grid gap-2 sm:grid-cols-2">
@@ -358,22 +364,27 @@ export default function AddHouse({ stageNames }: { stageNames: string[] }) {
                     value={draft.owners[i]?.name ?? ""}
                     onChange={(e) => {
                       const owners = [...draft.owners];
-                      owners[i] = { name: e.target.value, email: owners[i]?.email ?? null };
+                      owners[i] = { ...(owners[i] ?? { email: null }), name: e.target.value };
                       set("owners", owners.filter((o, n) => o.name || n < i));
                     }}
                     placeholder="Name"
                     className={field}
                   />
                   <input
-                    aria-label={`Owner ${i + 1} email`}
-                    type="email"
-                    value={draft.owners[i]?.email ?? ""}
+                    aria-label={`Owner ${i + 1} mobile`}
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    value={draft.owners[i]?.phone ?? ""}
                     onChange={(e) => {
                       const owners = [...draft.owners];
-                      owners[i] = { name: owners[i]?.name ?? "", email: e.target.value || null };
+                      owners[i] = {
+                        ...(owners[i] ?? { name: "", email: null }),
+                        phone: e.target.value || null,
+                      };
                       set("owners", owners);
                     }}
-                    placeholder="Email (optional)"
+                    placeholder="Mobile (optional)"
                     className={field}
                   />
                 </div>

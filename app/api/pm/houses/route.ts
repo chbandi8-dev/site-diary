@@ -25,7 +25,10 @@ const create = z.object({
     .array(
       z.object({
         name: z.string().trim().min(1).max(120),
+        // Both optional. A name on its own is a real entry now — the address
+        // arrives when they open their link and register themselves.
         email: z.string().trim().email().max(200).optional().nullable(),
+        phone: z.string().trim().max(40).optional().nullable(),
       })
     )
     .max(2)

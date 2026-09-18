@@ -19,7 +19,7 @@ export type NewHouse = {
   address: string;
   suburb?: string | null;
   storeys?: 1 | 2;
-  owners?: { name: string; email?: string | null }[];
+  owners?: { name: string; email?: string | null; phone?: string | null }[];
   currentStage?: string | null;
   waitingOn?: string | null;
   waitingOnDate?: string | null;
@@ -78,22 +78,33 @@ export async function createHouse(input: NewHouse): Promise<{ id: string; addres
     select: { id: true, address: true },
   });
 
-  // Only owners he gave an address for. An owner record exists to be emailed,
-  // and the product's whole shape is that they register themselves when they
-  // open the WhatsApp link — so a name with no address is not a half-owner
-  // worth storing, it is a row that would sit there looking like contact
-  // details he has.
+  // A name is enough. He knows who is building the house and often their
+  // mobile; he does not know their email, because nobody hands one over at a
+  // pre-start meeting. Dropping the name until an address turned up meant the
+  // person he had just typed in simply did not appear, and when they later
+  // opened their link a second, unrelated record was created beside the one he
+  // thought he had made.
+  //
+  // The email arrives when they register themselves — see `registerViewer`,
+  // which attaches it to this record rather than making another. That is also
+  // the only version of the address anyone has confirmed.
   for (const person of input.owners ?? []) {
-    if (!person.email) continue;
-    const email = person.email.toLowerCase();
+    const email = person.email ? person.email.toLowerCase() : null;
 
-    // Upsert rather than create: the same couple building two houses is one
-    // person with two builds, and they should not have to register twice.
-    const owner = await prisma.owner.upsert({
-      where: { email },
-      update: { name: person.name },
-      create: { name: person.name, email },
-    });
+    // Upsert on the address when there is one: the same couple building two
+    // houses is one person with two builds. Without an address there is
+    // nothing safe to match on, so it is a new record — two different people
+    // can share a first name, and merging them would put one family's updates
+    // in front of another.
+    const owner = email
+      ? await prisma.owner.upsert({
+          where: { email },
+          update: { name: person.name, ...(person.phone ? { phone: person.phone } : {}) },
+          create: { name: person.name, email, phone: person.phone ?? null },
+        })
+      : await prisma.owner.create({
+          data: { name: person.name, phone: person.phone ?? null },
+        });
 
     await prisma.houseOwner.upsert({
       where: { houseId_ownerId: { houseId: house.id, ownerId: owner.id } },
