@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { whatsAppLink } from "@/lib/phone";
+import { toWhatsAppNumber } from "@/lib/phone";
+import { sendOnWhatsApp } from "@/lib/whatsapp";
 import { send as outboxSend } from "@/lib/outbox";
 import { useRouter } from "next/navigation";
 import { Camera, Check, ImagePlus, Loader2, RotateCw, X, MessageCircle } from "lucide-react";
@@ -266,28 +267,34 @@ export default function QuickSend({
             Also on WhatsApp
           </span>
           {owners.map((o) => {
-            const link = whatsAppLink(o.phone, lastSent);
+            const hasNumber = Boolean(toWhatsAppNumber(o.phone));
             const first = o.name.split(" ")[0];
-            return link ? (
-              <a
+            return (
+              <button
                 key={o.id}
-                href={link}
-                target="_blank"
-                rel="noreferrer"
-                className="flex min-h-[38px] items-center gap-1.5 rounded-lg border border-emerald-400/40 px-3 text-sm text-emerald-300 hover:border-emerald-400"
+                type="button"
+                onClick={() =>
+                  sendOnWhatsApp({
+                    message: lastSent,
+                    phone: o.phone,
+                    preferShareSheet: !hasNumber,
+                  })
+                }
+                title={
+                  hasNumber
+                    ? `Open WhatsApp with ${first}`
+                    : `No mobile for ${first} — this opens the share sheet so you can pick them`
+                }
+                className={
+                  "flex min-h-[38px] items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors " +
+                  (hasNumber
+                    ? "border-emerald-400/40 text-emerald-300 hover:border-emerald-400"
+                    : "border-white/12 text-white/45 hover:border-white/30 hover:text-white/70")
+                }
               >
                 <MessageCircle size={13} aria-hidden="true" />
                 {first}
-              </a>
-            ) : (
-              <span
-                key={o.id}
-                title={`No mobile for ${first} — add one under the owner link`}
-                className="flex min-h-[38px] cursor-not-allowed items-center gap-1.5 rounded-lg border border-white/10 px-3 text-sm text-white/25"
-              >
-                <MessageCircle size={13} aria-hidden="true" />
-                {first}
-              </span>
+              </button>
             );
           })}
         </div>

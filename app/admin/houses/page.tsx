@@ -28,40 +28,46 @@ export default async function HousesPage({
   // for — the unfiltered run sheet stays exactly as cheap as it was.
   const phaseFilter = searchParams?.phase?.trim() || null;
   const behindOnly = searchParams?.behind === "1";
-  const stageNames = (
-    await prisma.stageTemplate.findMany({
+
+  // Three independent queries, run at once. In series they were three round
+  // trips to the database stacked end to end before a single pixel of the run
+  // sheet could render, on the page he opens more than any other.
+  const [templates, houses, demoPresent] = await Promise.all([
+    prisma.stageTemplate.findMany({
       select: { name: true },
       orderBy: { position: "asc" },
-    })
-  ).map((t) => t.name);
-
-  const houses = await prisma.house.findMany({
-    where: { status: { not: "handed_over" } },
-    select: {
-      id: true,
-      address: true,
-      suburb: true,
-      waitingOn: true,
-      stages: {
-        where: { status: "in_progress" },
-        select: { name: true },
-        orderBy: { position: "asc" },
-      },
-      updates: {
-        where: { publishedAt: { not: null } },
-        select: { occurredAt: true },
-        orderBy: { occurredAt: "desc" },
-        take: 1,
-      },
-      _count: {
-        select: {
-          ownerReports: { where: { status: "submitted" } },
-          updates: { where: { publishedAt: null, deletedAt: null } },
+    }),
+    prisma.house.findMany({
+      where: { status: { not: "handed_over" } },
+      select: {
+        id: true,
+        address: true,
+        suburb: true,
+        waitingOn: true,
+        stages: {
+          where: { status: "in_progress" },
+          select: { name: true },
+          orderBy: { position: "asc" },
+        },
+        updates: {
+          where: { publishedAt: { not: null } },
+          select: { occurredAt: true },
+          orderBy: { occurredAt: "desc" },
+          take: 1,
+        },
+        _count: {
+          select: {
+            ownerReports: { where: { status: "submitted" } },
+            updates: { where: { publishedAt: null, deletedAt: null } },
+          },
         },
       },
-    },
-    orderBy: { address: "asc" },
-  });
+        orderBy: { address: "asc" },
+    }),
+    prisma.owner.count({ where: { email: { endsWith: "example.invalid" } } }).then((n) => n > 0),
+  ]);
+
+  const stageNames = templates.map((t) => t.name);
 
   let matching: Set<string> | null = null;
   if (phaseFilter || behindOnly) {
@@ -88,9 +94,6 @@ export default async function HousesPage({
         .map((h) => h.id)
     );
   }
-
-  const demoPresent =
-    (await prisma.owner.count({ where: { email: { endsWith: "example.invalid" } } })) > 0;
 
   const now = Date.now();
   const withState = houses.map((h) => {

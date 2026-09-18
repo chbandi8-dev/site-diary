@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { whatsAppLink } from "@/lib/phone";
+import { toWhatsAppNumber } from "@/lib/phone";
+import { sendOnWhatsApp } from "@/lib/whatsapp";
+import WhatsAppButton from "./WhatsAppButton";
 import { useRouter } from "next/navigation";
 import { Check, Copy, Link2, MailX, RefreshCw, Undo2, Pencil, MessageCircle } from "lucide-react";
 
@@ -169,17 +171,15 @@ export default function HouseLink({
                 copy-then-switch-apps is the clunkiest step in the whole product
                 — this is its entire distribution mechanism.
               */}
-              <a
-                href={`https://wa.me/?text=${encodeURIComponent(
+              <WhatsAppButton
+                phone={registered.find((r) => !r.revoked && r.phone)?.phone ?? null}
+                label="Send on WhatsApp"
+                chooseLabel="Pick who gets it"
+                message={
                   `Hi — this is the page for ${address}. Photos and updates go up here as they happen, ` +
-                    `and you can ask me anything through it: ${url}`
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex min-h-[46px] items-center gap-2 rounded-lg bg-gold px-5 font-medium text-dark"
-              >
-                Send on WhatsApp
-              </a>
+                  `and you can ask me anything through it: ${url}`
+                }
+              />
               <button
                 type="button"
                 onClick={copy}
@@ -241,7 +241,7 @@ export default function HouseLink({
       ) : (
         <ul className="flex flex-col gap-2">
           {registered.map((r) => {
-            const wa = whatsAppLink(r.phone, `Hi ${r.name.split(" ")[0]}, `);
+            const hasNumber = Boolean(toWhatsAppNumber(r.phone));
             const open = editing === r.ownerId;
             return (
               <li
@@ -277,25 +277,33 @@ export default function HouseLink({
                     {/* Greyed out until there is a number to open it with —
                         present either way, so it is obvious that adding a
                         number is what turns it on. */}
-                    {wa ? (
-                      <a
-                        href={wa}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex min-h-[40px] items-center gap-2 rounded-lg border border-emerald-400/40 px-4 text-sm text-emerald-300 hover:border-emerald-400"
-                      >
-                        <MessageCircle size={14} aria-hidden="true" />
-                        WhatsApp
-                      </a>
-                    ) : (
-                      <span
-                        title="Add a phone number to use WhatsApp"
-                        className="flex min-h-[40px] cursor-not-allowed items-center gap-2 rounded-lg border border-white/10 px-4 text-sm text-white/25"
-                      >
-                        <MessageCircle size={14} aria-hidden="true" />
-                        WhatsApp
-                      </span>
-                    )}
+                    {/* Live either way. With a number it opens their chat; without
+                        one it opens the share sheet so he can pick them out of his
+                        own contacts — a dead button helped nobody. */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        sendOnWhatsApp({
+                          message: `Hi ${r.name.split(" ")[0]}, `,
+                          phone: r.phone,
+                          preferShareSheet: !hasNumber,
+                        })
+                      }
+                      title={
+                        hasNumber
+                          ? `Open WhatsApp with ${r.name.split(" ")[0]}`
+                          : "No mobile saved — this opens the share sheet so you can pick them"
+                      }
+                      className={
+                        "flex min-h-[40px] items-center gap-2 rounded-lg border px-4 text-sm transition-colors " +
+                        (hasNumber
+                          ? "border-emerald-400/40 text-emerald-300 hover:border-emerald-400"
+                          : "border-white/12 text-white/45 hover:border-white/30 hover:text-white/70")
+                      }
+                    >
+                      <MessageCircle size={14} aria-hidden="true" />
+                      WhatsApp
+                    </button>
 
                     <button
                       type="button"

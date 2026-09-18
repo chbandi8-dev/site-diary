@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Camera, Check, Copy, MessageCircle, Users } from "lucide-react";
-import { whatsAppLink } from "@/lib/phone";
+import { toWhatsAppNumber } from "@/lib/phone";
+import { sendOnWhatsApp } from "@/lib/whatsapp";
 import type { Trade } from "./Trades";
 
 type Defect = { reference: string | null; location: string | null; description: string };
@@ -150,7 +151,7 @@ export default function MessageTrade({
   });
 
   const picked = sorted.find((t) => t.id === chosen);
-  const link = picked ? whatsAppLink(picked.phone, message) : null;
+  const hasNumber = Boolean(picked && toWhatsAppNumber(picked.phone));
 
   if (trades.length === 0) return null;
 
@@ -270,22 +271,30 @@ export default function MessageTrade({
                 <Camera size={16} aria-hidden="true" />
                 {sharing ? "Opening…" : "Send the photo and message"}
               </button>
-            ) : link ? (
-              <a
-                href={link}
-                target="_blank"
-                rel="noreferrer"
+            ) : picked ? (
+              // A button, not a link: an anchor with target="_blank" is
+              // silently dropped by iOS when the app is on the home screen,
+              // which is how this came to look broken.
+              <button
+                type="button"
+                onClick={() =>
+                  sendOnWhatsApp({
+                    message,
+                    phone: picked.phone,
+                    preferShareSheet: !hasNumber,
+                  })
+                }
                 className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-emerald-500/90 px-6 font-medium text-dark hover:bg-emerald-400"
               >
                 <MessageCircle size={16} aria-hidden="true" />
-                Open WhatsApp to {picked?.name.split(" ")[0]}
-              </a>
+                {hasNumber
+                  ? `Open WhatsApp to ${picked.name.split(" ")[0]}`
+                  : `Pick ${picked.name.split(" ")[0]} in WhatsApp`}
+              </button>
             ) : (
               <p className="flex items-center gap-2 rounded-lg border border-white/10 px-4 py-3 text-sm text-white/35">
                 <Users size={14} aria-hidden="true" />
-                {!picked
-                  ? "Pick who it's going to."
-                  : `${picked.name} has no mobile saved — add one on the trades page.`}
+                Pick who it&apos;s going to.
               </p>
             )}
           </div>

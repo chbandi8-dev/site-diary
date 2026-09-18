@@ -23,143 +23,163 @@ export const dynamic = "force-dynamic";
 
 export default async function HouseCapture({ params }: { params: { id: string } }) {
   await requireStaff();
-  const house = await prisma.house.findUnique({
-    where: { id: params.id },
-    select: {
-      id: true,
-      address: true,
-      suburb: true,
-      lotNumber: true,
-      storeys: true,
-      development: { select: { name: true } },
-      // Counted so the delete warning names what would actually be destroyed
-      // rather than saying "and related data" like every other app.
-      _count: {
-        select: {
-          updates: { where: { deletedAt: null } },
-          photos: { where: { deletedAt: null } },
-          internalNotes: true,
-          documents: true,
+
+  // All three run at once. They were awaited one after another, and none of
+  // them depends on the others — every relation Prisma loads here is its own
+  // round trip to the database, so doing them in series was paying the latency
+  // three times over on the page he opens most.
+  const [house, recentPhotos, trades] = await Promise.all([
+    prisma.house.findUnique({
+      where: { id: params.id },
+      select: {
+        id: true,
+        address: true,
+        suburb: true,
+        lotNumber: true,
+        storeys: true,
+        development: { select: { name: true } },
+        // Counted so the delete warning names what would actually be destroyed
+        // rather than saying "and related data" like every other app.
+        _count: {
+          select: {
+            updates: { where: { deletedAt: null } },
+            photos: { where: { deletedAt: null } },
+            internalNotes: true,
+            documents: true,
+          },
+        },
+        waitingOn: true,
+        waitingOnEta: true,
+        handoverFrom: true,
+        handoverTo: true,
+        stages: {
+          select: {
+            id: true,
+            name: true,
+            phase: true,
+            status: true,
+            _count: { select: { updates: true, photos: true } },
+          },
+          orderBy: { position: "asc" },
+        },
+        owners: {
+          select: {
+            revokedAt: true,
+            lastSeenAt: true,
+            owner: { select: { id: true, name: true, email: true, phone: true } },
+          },
+        },
+        accessLinks: {
+          where: { revokedAt: null },
+          select: { hint: true, lastUsedAt: true, useCount: true },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+        decisions: {
+          where: { status: { in: ["open", "answered"] } },
+          select: {
+            id: true,
+            question: true,
+            dueDate: true,
+            status: true,
+            askedAt: true,
+            answeredAt: true,
+            answer: true,
+          },
+          orderBy: [{ status: "asc" }, { askedAt: "desc" }],
+          take: 15,
+        },
+        variations: {
+          select: {
+            id: true,
+            reference: true,
+            description: true,
+            amountCents: true,
+            status: true,
+            sentAt: true,
+            approvedAt: true,
+            declinedAt: true,
+            declineReason: true,
+            approvedBy: { select: { name: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 15,
+        },
+        documents: {
+          where: { status: "ready" },
+          select: { id: true, title: true, category: true, bytes: true, uploadedAt: true },
+          orderBy: [{ category: "asc" }, { uploadedAt: "desc" }],
+          take: 25,
+        },
+        weatherDays: {
+          where: { workLost: true },
+          select: { id: true, date: true, note: true, rainfallMm: true, eotClaimedAt: true },
+          orderBy: { date: "desc" },
+          take: 30,
+        },
+        defects: {
+          select: {
+            id: true,
+            reference: true,
+            location: true,
+            description: true,
+            status: true,
+            raisedByOwner: true,
+            targetAt: true,
+            resolvedAt: true,
+          },
+          orderBy: [{ status: "asc" }, { raisedAt: "asc" }],
+          take: 40,
+        },
+        forecasts: {
+          select: { from: true, to: true, reason: true, createdAt: true, notifiedAt: true },
+          orderBy: { createdAt: "desc" },
+          take: 4,
+        },
+        internalNotes: {
+          select: {
+            id: true,
+            body: true,
+            createdAt: true,
+            author: { select: { name: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 12,
+        },
+        updates: {
+          where: { deletedAt: null },
+          select: { id: true, body: true, occurredAt: true, publishedAt: true },
+          orderBy: { occurredAt: "desc" },
+          take: 8,
         },
       },
-      waitingOn: true,
-      waitingOnEta: true,
-      handoverFrom: true,
-      handoverTo: true,
-      stages: {
-        select: {
-          id: true,
-          name: true,
-          phase: true,
-          status: true,
-          _count: { select: { updates: true, photos: true } },
-        },
-        orderBy: { position: "asc" },
+    }),
+
+    // Recent photos, for sending to a trade. Keyed off the route parameter
+    // rather than the loaded house, which is what lets this run in parallel.
+    prisma.photo.findMany({
+      where: { houseId: params.id, status: "ready", deletedAt: null },
+      select: { id: true, key: true, caption: true, takenAt: true },
+      orderBy: [{ takenAt: "desc" }, { createdAt: "desc" }],
+      take: 8,
+    }),
+
+    // His address book, loaded alongside the house so a message about this
+    // build is two taps rather than a trip to another screen and back.
+    prisma.trade.findMany({
+      where: { archivedAt: null },
+      orderBy: [{ trade: "asc" }, { name: "asc" }],
+      select: {
+        id: true, name: true, company: true, trade: true,
+        phone: true, email: true, notes: true,
       },
-      owners: {
-        select: {
-          revokedAt: true,
-          lastSeenAt: true,
-          owner: { select: { id: true, name: true, email: true, phone: true } },
-        },
-      },
-      accessLinks: {
-        where: { revokedAt: null },
-        select: { hint: true, lastUsedAt: true, useCount: true },
-        orderBy: { createdAt: "desc" },
-        take: 1,
-      },
-      decisions: {
-        where: { status: { in: ["open", "answered"] } },
-        select: {
-          id: true,
-          question: true,
-          dueDate: true,
-          status: true,
-          askedAt: true,
-          answeredAt: true,
-          answer: true,
-        },
-        orderBy: [{ status: "asc" }, { askedAt: "desc" }],
-        take: 25,
-      },
-      variations: {
-        select: {
-          id: true,
-          reference: true,
-          description: true,
-          amountCents: true,
-          status: true,
-          sentAt: true,
-          approvedAt: true,
-          declinedAt: true,
-          declineReason: true,
-          approvedBy: { select: { name: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 25,
-      },
-      documents: {
-        where: { status: "ready" },
-        select: { id: true, title: true, category: true, bytes: true, uploadedAt: true },
-        orderBy: [{ category: "asc" }, { uploadedAt: "desc" }],
-        take: 40,
-      },
-      weatherDays: {
-        where: { workLost: true },
-        select: { id: true, date: true, note: true, rainfallMm: true, eotClaimedAt: true },
-        orderBy: { date: "desc" },
-        take: 60,
-      },
-      defects: {
-        select: {
-          id: true,
-          reference: true,
-          location: true,
-          description: true,
-          status: true,
-          raisedByOwner: true,
-          targetAt: true,
-          resolvedAt: true,
-        },
-        orderBy: [{ status: "asc" }, { raisedAt: "asc" }],
-        take: 60,
-      },
-      forecasts: {
-        select: { from: true, to: true, reason: true, createdAt: true, notifiedAt: true },
-        orderBy: { createdAt: "desc" },
-        take: 6,
-      },
-      internalNotes: {
-        select: {
-          id: true,
-          body: true,
-          createdAt: true,
-          author: { select: { name: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 15,
-      },
-      updates: {
-        where: { deletedAt: null },
-        select: { id: true, body: true, occurredAt: true, publishedAt: true },
-        orderBy: { occurredAt: "desc" },
-        take: 10,
-      },
-    },
-  });
+    }),
+  ]);
 
   if (!house) notFound();
 
-  // Recent photos of this house, for sending to a trade. Signed here rather
-  // than in the browser — the bucket is private and these are other people's
-  // homes.
-  const recentPhotos = await prisma.photo.findMany({
-    where: { houseId: house.id, status: "ready", deletedAt: null },
-    select: { id: true, key: true, caption: true, takenAt: true },
-    orderBy: [{ takenAt: "desc" }, { createdAt: "desc" }],
-    take: 12,
-  });
+  // Signed here rather than in the browser — the bucket is private and these
+  // are other people's homes. Signing is local, so it costs no round trip.
   const photos = await Promise.all(
     recentPhotos.map(async (p) => ({
       id: p.id,
@@ -167,17 +187,6 @@ export default async function HouseCapture({ params }: { params: { id: string } 
       url: await signDownload(p.key),
     }))
   );
-
-  // His address book, loaded alongside the house so a message about this build
-  // is two taps rather than a trip to another screen and back.
-  const trades = await prisma.trade.findMany({
-    where: { archivedAt: null },
-    orderBy: [{ trade: "asc" }, { name: "asc" }],
-    select: {
-      id: true, name: true, company: true, trade: true,
-      phone: true, email: true, notes: true,
-    },
-  });
 
   const underway = house.stages.filter((s) => s.status === "in_progress");
   const owners = house.owners.filter((o) => !o.revokedAt);
