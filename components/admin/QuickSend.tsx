@@ -5,7 +5,7 @@ import { toWhatsAppNumber } from "@/lib/phone";
 import { sendOnWhatsApp } from "@/lib/whatsapp";
 import { send as outboxSend } from "@/lib/outbox";
 import { useRouter } from "next/navigation";
-import { Camera, Check, ImagePlus, Loader2, RotateCw, X, MessageCircle } from "lucide-react";
+import { Camera, Check, ImagePlus, Loader2, MessageCircle, RotateCw, Users, X } from "lucide-react";
 import { uploadPhoto } from "@/lib/capture/photo";
 import VoiceNote from "./VoiceNote";
 
@@ -297,6 +297,23 @@ export default function QuickSend({
               </button>
             );
           })}
+
+          {/* One tap, then WhatsApp's own recipient list — where several chats
+              can be ticked and sent at once. A web page cannot address two
+              numbers with one link, and it cannot read his contacts on an
+              iPhone, so handing the message to the share sheet is the only
+              route to "both of them, and the site foreman too". */}
+          {owners.length > 1 && (
+            <button
+              type="button"
+              onClick={() => sendOnWhatsApp({ message: lastSent, preferShareSheet: true })}
+              title="Opens WhatsApp's own list — tick as many chats as you like"
+              className="flex min-h-[38px] items-center gap-1.5 rounded-lg border border-white/12 px-3 text-sm text-white/55 transition-colors hover:border-white/30 hover:text-white"
+            >
+              <Users size={13} aria-hidden="true" />
+              Everyone
+            </button>
+          )}
         </div>
       )}
 

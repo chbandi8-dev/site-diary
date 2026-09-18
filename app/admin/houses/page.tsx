@@ -4,6 +4,7 @@ import { requireStaff } from "@/lib/auth-guard";
 import AddHouse from "@/components/admin/AddHouse";
 import HouseList from "@/components/admin/HouseList";
 import DemoHouses, { ExportEverything } from "@/components/admin/DemoHouses";
+import BoardShare from "@/components/admin/BoardShare";
 import { currentPhase, hasProgramme, overdueStages, type StageFacts } from "@/lib/phases";
 import { X } from "lucide-react";
 
@@ -32,7 +33,7 @@ export default async function HousesPage({
   // Three independent queries, run at once. In series they were three round
   // trips to the database stacked end to end before a single pixel of the run
   // sheet could render, on the page he opens more than any other.
-  const [templates, houses, demoPresent] = await Promise.all([
+  const [templates, houses, demoPresent, boardLinks, developments] = await Promise.all([
     prisma.stageTemplate.findMany({
       select: { name: true },
       orderBy: { position: "asc" },
@@ -65,6 +66,24 @@ export default async function HousesPage({
         orderBy: { address: "asc" },
     }),
     prisma.owner.count({ where: { email: { endsWith: "example.invalid" } } }).then((n) => n > 0),
+    prisma.boardLink.findMany({
+      where: { revokedAt: null },
+      select: {
+        id: true,
+        label: true,
+        hint: true,
+        lastUsedAt: true,
+        useCount: true,
+        development: { select: { name: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    }),
+    prisma.development.findMany({
+      where: { archivedAt: null },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   const stageNames = templates.map((t) => t.name);
@@ -199,6 +218,18 @@ export default async function HousesPage({
           )}
         </p>
       )}
+
+      <BoardShare
+        links={boardLinks.map((l) => ({
+          id: l.id,
+          label: l.label,
+          hint: l.hint,
+          estate: l.development?.name ?? null,
+          lastUsedAt: l.lastUsedAt?.toISOString() ?? null,
+          useCount: l.useCount,
+        }))}
+        developments={developments}
+      />
 
       <DemoHouses present={demoPresent} />
 

@@ -287,9 +287,43 @@ model Development {
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  houses House[]
+  houses     House[]
+  boardLinks BoardLink[]
 
   @@map("developments")
+}
+
+/// A read-only board of every build, shared by link.
+///
+/// Different from AccessLink in the one way that matters: an access link is a
+/// key to ONE house and everything in it, while this is a key to a thin slice
+/// of ALL of them — address, lot, which phase the work is in, and when it was
+/// last touched. Nothing else. No owner names, no money, no private notes, no
+/// photos.
+///
+/// It exists because the people who ask "where is everything up to" are not
+/// homeowners. They are the builder he works for, or the developer running the
+/// estate, and until now the answer was a phone call on a Monday morning or a
+/// spreadsheet he kept by hand. Scoped to one development where the asker only
+/// has lots in that estate; unscoped for whoever is entitled to see the lot.
+model BoardLink {
+  id            String  @id @default(uuid()) @db.Uuid
+  tokenHash     String  @unique @map("token_hash")
+  hint          String
+  /// Who it was made for, for his own memory. Never shown on the board.
+  label         String
+  /// Limits the board to one estate. Null shows every active build.
+  developmentId String? @map("development_id") @db.Uuid
+
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(3)
+  useCount   Int       @default(0) @map("use_count")
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  development Development? @relation(fields: [developmentId], references: [id], onDelete: Cascade)
+
+  @@index([revokedAt])
+  @@map("board_links")
 }
 
 /// One build. The unit everything else hangs off, and the unit of access

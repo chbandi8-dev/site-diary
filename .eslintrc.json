@@ -6,7 +6,8 @@
         "app/my/**",
         "app/h/**",
         "app/api/owner/**",
-        "components/owner/**"
+        "components/owner/**",
+        "app/b/**"
       ],
       "rules": {
         "no-restricted-imports": [
@@ -19,7 +20,7 @@
                   "@/lib/prisma",
                   "@prisma/client"
                 ],
-                "message": "Owner-facing code must read through @/lib/db/owner, whose functions all take a house id resolved from a verified access link. Reaching the database directly here is how a link to one build becomes a key to all of them."
+                "message": "Link-shared code must read through its own chokepoint \u2014 @/lib/db/owner for a house, @/lib/db/board for the read-only board \u2014 whose functions decide what that link is entitled to. Reaching the database directly here is how a link to one build becomes a key to all of them."
               }
             ]
           }
@@ -29,7 +30,9 @@
     {
       "files": [
         "lib/db/owner.ts",
-        "lib/owner/**"
+        "lib/owner/**",
+        "lib/db/board.ts",
+        "lib/board/**"
       ],
       "rules": {
         "no-restricted-imports": "off"
