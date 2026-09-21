@@ -98,6 +98,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
  * house entered by mistake, which after voice capture is the case that
  * actually comes up.
  *
+ * The typed address is required only where there is something to lose. A house
+ * with nothing filed against it is a mis-typed address or a duplicate from the
+ * microphone, and making him spell it out to clear one is ceremony for its own
+ * sake — which is how people learn to type past a warning without reading it.
+ *
  * Photo objects in R2 are not removed here; `scripts/sweep-orphan-photos.ts`
  * collects them separately, so the bucket lags the database by a sweep.
  */
@@ -109,18 +114,45 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
   const house = await prisma.house.findUnique({
     where: { id: params.id },
-    select: { id: true, address: true },
+    select: {
+      id: true,
+      address: true,
+      _count: {
+        select: {
+          updates: { where: { deletedAt: null } },
+          photos: { where: { deletedAt: null } },
+          internalNotes: true,
+          documents: true,
+          variations: true,
+          defects: true,
+        },
+      },
+    },
   });
   if (!house) return NextResponse.json({ error: "House not found" }, { status: 404 });
 
-  // Typed, not clicked. Whitespace and case are forgiven; the words are not.
-  const typed = (req.nextUrl.searchParams.get("confirm") ?? "").trim().replace(/\s+/g, " ");
-  const expected = house.address.trim().replace(/\s+/g, " ");
-  if (typed.toLowerCase() !== expected.toLowerCase()) {
-    return NextResponse.json(
-      { error: `Type the address exactly — ${house.address} — to delete it.` },
-      { status: 400 }
-    );
+  const filed =
+    house._count.updates +
+    house._count.photos +
+    house._count.internalNotes +
+    house._count.documents +
+    house._count.variations +
+    house._count.defects;
+
+  // Typed, not clicked — but only where something would be lost. Whitespace and
+  // case are forgiven; the words are not.
+  if (filed > 0) {
+    const typed = (req.nextUrl.searchParams.get("confirm") ?? "").trim().replace(/\s+/g, " ");
+    const expected = house.address.trim().replace(/\s+/g, " ");
+    if (typed.toLowerCase() !== expected.toLowerCase()) {
+      return NextResponse.json(
+        {
+          error: `${house.address} has ${filed} thing${filed === 1 ? "" : "s"} filed against it. Open the house and delete it there.`,
+          needsTypedConfirmation: true,
+        },
+        { status: 400 }
+      );
+    }
   }
 
   await prisma.house.delete({ where: { id: house.id } });
