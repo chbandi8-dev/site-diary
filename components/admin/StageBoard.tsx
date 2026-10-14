@@ -85,6 +85,9 @@ export default function StageBoard({
   useEffect(() => setLocal(stages), [stages]);
 
   const [busy, setBusy] = useState<string | null>(null);
+  // Stages he has tapped this visit. Kept on screen whatever else changes, so a
+  // tick can always be undone — see the window below for why that matters.
+  const [touched, setTouched] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<{ stage: string; body: string } | null>(null);
   const [sending, setSending] = useState(false);
@@ -115,6 +118,7 @@ export default function StageBoard({
 
     // Moves now. The request is the slow part and he should never wait on it.
     setLocal((rows) => rows.map((r) => (r.id === stage.id ? { ...r, status } : r)));
+    setTouched((ids) => (ids.includes(stage.id) ? ids : [...ids, stage.id]));
     setError(null);
 
     try {
@@ -222,13 +226,24 @@ export default function StageBoard({
 
   // Everything active, plus a little either side. The full 31 is a wall he does
   // not need while standing on a slab.
+  //
+  // The window is measured from an anchor, and the anchor used to be "the stage
+  // underway" — which is exactly what stops existing the moment he ticks it.
+  // With nothing underway the end of the slice fell back to 4, so the window
+  // became slice(17, 4): empty. Ticking the last stage underway blanked the
+  // whole board, took away the undo, and hid what came next, at the one moment
+  // the board is meant to be most useful. So: underway if there is one,
+  // otherwise the next stage still to do, otherwise (finished) the last.
   const active = local.filter((s) => s.status === "in_progress" || s.status === "on_hold");
-  const firstActive = local.findIndex((s) => s.status === "in_progress");
-  const nearby = local.slice(
-    Math.max(0, (firstActive === -1 ? local.findIndex((s) => s.status !== "complete") : firstActive) - 1),
-    Math.max(4, (firstActive === -1 ? 4 : firstActive + 4))
-  );
-  const shown = open ? local : Array.from(new Set([...active, ...nearby]));
+  const underwayAt = local.findIndex((s) => s.status === "in_progress");
+  const todoAt = local.findIndex((s) => s.status !== "complete" && s.status !== "not_applicable");
+  const anchor = underwayAt !== -1 ? underwayAt : todoAt !== -1 ? todoAt : Math.max(0, local.length - 1);
+  const nearby = local.slice(Math.max(0, anchor - 2), anchor + 4);
+
+  // By id, then filtered out of the spine, so the list always reads in build
+  // order rather than in whatever order the pieces were gathered.
+  const keep = new Set([...active, ...nearby].map((s) => s.id).concat(touched));
+  const shown = open ? local : local.filter((s) => keep.has(s.id));
 
   return (
     <section className="mt-10">

@@ -37,6 +37,7 @@ export default async function HouseCapture({ params }: { params: { id: string } 
         suburb: true,
         lotNumber: true,
         storeys: true,
+      status: true,
         development: { select: { name: true } },
         // Counted so the delete warning names what would actually be destroyed
         // rather than saying "and related data" like every other app.
@@ -211,6 +212,11 @@ export default async function HouseCapture({ params }: { params: { id: string } 
         <h1 className="mt-1 font-display text-2xl leading-tight text-white sm:text-3xl">
           {house.address}
         </h1>
+        {house.status === "handed_over" && (
+          <p className="mt-2 inline-block rounded-full bg-white/[0.08] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.13em] text-white/55">
+            Handed over
+          </p>
+        )}
         <p className="mt-1 text-sm leading-snug text-white/45">
           {owners.map((o) => o.owner.name).join(" & ") || "No owners linked"}
           {house.suburb ? ` · ${house.suburb}` : ""}
@@ -228,6 +234,7 @@ export default async function HouseCapture({ params }: { params: { id: string } 
             suburb={house.suburb}
             lotNumber={house.lotNumber}
             storeys={house.storeys}
+            status={house.status}
             holdings={{
               updates: house._count.updates,
               photos: house._count.photos,

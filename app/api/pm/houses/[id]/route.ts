@@ -25,6 +25,12 @@ const patch = z.object({
   suburb: z.string().trim().max(120).nullable().optional(),
   lotNumber: z.string().trim().max(40).nullable().optional(),
   storeys: z.union([z.literal(1), z.literal(2)]).optional(),
+  /**
+   * Handing a finished build over, and reopening one handed over by mistake.
+   * Nothing could set this before, so a completed house stayed on his
+   * dashboard, his run sheet and the builder's board for ever.
+   */
+  status: z.enum(["active", "handed_over"]).optional(),
   waitingOn: z.string().trim().max(200).nullable().optional(),
   waitingOnEta: z.string().date().nullable().optional(),
   handoverFrom: z.string().date().nullable().optional(),
@@ -47,7 +53,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   });
   if (!house) return NextResponse.json({ error: "House not found" }, { status: 404 });
 
-  const { handoverFrom, handoverTo, handoverReason, address, suburb, lotNumber, storeys, ...rest } =
+  const { handoverFrom, handoverTo, handoverReason, address, suburb, lotNumber, storeys, status, ...rest } =
     parsed.data;
   const nextFrom = handoverFrom === undefined ? house.handoverFrom : handoverFrom ? new Date(handoverFrom) : null;
   const nextTo = handoverTo === undefined ? house.handoverTo : handoverTo ? new Date(handoverTo) : null;
@@ -64,6 +70,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         ...(suburb !== undefined ? { suburb: suburb || null } : {}),
         ...(lotNumber !== undefined ? { lotNumber: lotNumber || null } : {}),
         ...(storeys !== undefined ? { storeys } : {}),
+        ...(status !== undefined
+          ? {
+              status,
+              // The date is the record. Reopening clears it rather than leaving
+              // a handover date on a house that is being built again.
+              handedOverAt: status === "handed_over" ? new Date() : null,
+            }
+          : {}),
         ...(rest.waitingOn !== undefined ? { waitingOn: rest.waitingOn } : {}),
         ...(rest.waitingOnEta !== undefined
           ? { waitingOnEta: rest.waitingOnEta ? new Date(rest.waitingOnEta) : null }

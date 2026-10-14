@@ -19,7 +19,7 @@ const DAYS_QUIET_BEFORE_FLAG = 5;
 export default async function HousesPage({
   searchParams,
 }: {
-  searchParams?: { phase?: string; behind?: string };
+  searchParams?: { phase?: string; behind?: string; done?: string };
 }) {
   await requireStaff();
 
@@ -29,17 +29,20 @@ export default async function HousesPage({
   // for — the unfiltered run sheet stays exactly as cheap as it was.
   const phaseFilter = searchParams?.phase?.trim() || null;
   const behindOnly = searchParams?.behind === "1";
+  // Finished builds, which leave every other screen. Reachable from here only,
+  // so a house handed over by mistake can still be found and reopened.
+  const showDone = searchParams?.done === "1";
 
   // Three independent queries, run at once. In series they were three round
   // trips to the database stacked end to end before a single pixel of the run
   // sheet could render, on the page he opens more than any other.
-  const [templates, houses, demoPresent, boardLinks, developments] = await Promise.all([
+  const [templates, houses, demoPresent, boardLinks, developments, doneCount] = await Promise.all([
     prisma.stageTemplate.findMany({
       select: { name: true },
       orderBy: { position: "asc" },
     }),
     prisma.house.findMany({
-      where: { status: { not: "handed_over" } },
+      where: showDone ? { status: "handed_over" } : { status: { not: "handed_over" } },
       select: {
         id: true,
         address: true,
@@ -84,6 +87,7 @@ export default async function HousesPage({
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
+    prisma.house.count({ where: { status: "handed_over" } }),
   ]);
 
   const stageNames = templates.map((t) => t.name);
@@ -133,7 +137,9 @@ export default async function HousesPage({
   withState.sort((a, b) => Number(b.needsAttention) - Number(a.needsAttention));
 
   const shown = matching ? withState.filter((h) => matching.has(h.id)) : withState;
-  const filterLabel = phaseFilter
+  const filterLabel = showDone
+    ? "Handed over"
+    : phaseFilter
     ? `In ${phaseFilter}`
     : behindOnly
       ? "Behind their dates"
@@ -168,6 +174,14 @@ export default async function HousesPage({
             >
               Developments
             </Link>
+            {(doneCount > 0 || showDone) && (
+              <Link
+                href="/admin/houses?done=1"
+                className="text-sm text-white/45 underline underline-offset-4 hover:text-white"
+              >
+                Handed over ({doneCount})
+              </Link>
+            )}
             <Link
               href="/admin/trades"
               className="text-sm text-white/45 underline underline-offset-4 hover:text-white"
@@ -205,7 +219,9 @@ export default async function HousesPage({
         <p className="rounded-lg border border-white/5 bg-dark-card px-5 py-8 text-center text-white/45">
           {filterLabel ? (
             <>
-              No houses {phaseFilter ? `in ${phaseFilter}` : "behind their dates"} right now.{" "}
+              {showDone
+                ? "Nothing handed over yet."
+                : `No houses ${phaseFilter ? `in ${phaseFilter}` : "behind their dates"} right now.`}{" "}
               <Link href="/admin/houses" className="text-gold underline underline-offset-4">
                 Show all houses
               </Link>

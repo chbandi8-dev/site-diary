@@ -27,6 +27,7 @@ export default function HouseSettings({
   suburb,
   lotNumber,
   storeys,
+  status,
   holdings,
 }: {
   houseId: string;
@@ -34,6 +35,7 @@ export default function HouseSettings({
   suburb: string | null;
   lotNumber: string | null;
   storeys: number;
+  status: string;
   /** What would be destroyed, counted on the server so the warning is true. */
   holdings: { updates: number; photos: number; notes: number; documents: number };
 }) {
@@ -81,6 +83,34 @@ export default function HouseSettings({
       if (!res.ok) throw new Error(data.error ?? "That didn't save.");
       close();
       router.refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "That didn't save.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const handedOver = status === "handed_over";
+
+  /**
+   * One tap each way. A finished build leaves his dashboard, his run sheet and
+   * the builder's board; everything stays on record, and reopening is as easy
+   * as closing, because "handed over" will be tapped by mistake at least once.
+   */
+  async function setHandover(next: "active" | "handed_over") {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/pm/houses/${houseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: next }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "That didn't save.");
+      close();
+      router.refresh();
+      if (next === "handed_over") router.push("/admin/houses");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "That didn't save.");
     } finally {
@@ -205,6 +235,26 @@ export default function HouseSettings({
                 ))}
               </div>
 
+              <div className="mt-8 rounded-xl border border-white/10 p-4">
+                <h3 className="text-sm font-medium text-white">
+                  {handedOver ? "This house has been handed over" : "Finished building?"}
+                </h3>
+                <p className="mt-2 text-xs leading-relaxed text-white/45">
+                  {handedOver
+                    ? "It's off your dashboard and the builder's board. Everything on it is kept."
+                    : "Marks it handed over and takes it off your dashboard, the run sheet and the builder's board. Everything on it is kept, and you can reopen it."}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setHandover(handedOver ? "active" : "handed_over")}
+                  disabled={saving}
+                  className="mt-3 flex min-h-[44px] items-center gap-2 rounded-lg border border-gold/40 px-4 text-sm font-medium text-gold transition-colors hover:bg-gold/10 disabled:opacity-40"
+                >
+                  {saving && <Loader2 size={15} className="animate-spin" />}
+                  {handedOver ? "Reopen this house" : "Mark as handed over"}
+                </button>
+              </div>
+
               {/* The awkward part, kept behind its own tap. */}
               <div className="mt-8 rounded-xl border border-danger/20 p-4">
                 <h3 className="flex items-center gap-2 text-sm font-medium text-white">
@@ -215,9 +265,10 @@ export default function HouseSettings({
                 {!danger ? (
                   <>
                     <p className="mt-2 text-xs leading-relaxed text-white/45">
-                      For one entered by mistake. If the build is finished, mark it handed
-                      over on the Today tab instead — that keeps the record, which is the
-                      whole point of a site diary if anyone ever disputes what happened.
+                      For one entered by mistake. If the build is finished, use
+                      &ldquo;Mark as handed over&rdquo; above instead — that keeps the record,
+                      which is the whole point of a site diary if anyone ever disputes what
+                      happened.
                     </p>
                     <button
                       type="button"
