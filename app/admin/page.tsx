@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth-guard";
@@ -59,25 +60,12 @@ export default async function Today() {
   await requireStaff();
 
   const now = Date.now();
-  const weekAgo = new Date(now - 7 * 86_400_000);
-  const twoWeeksAgo = new Date(now - 14 * 86_400_000);
 
-  // Everything at once. These were three groups awaited one after another, and
-  // none depends on another's answer — so the page waited for the sum of their
-  // trips to the database instead of the longest one.
-  //
-  // The catch-up for houses given a handover before due dates built themselves
-  // runs alongside rather than before. The first view after it has work to do
-  // may not yet reflect what it fixes; every view after does, and nothing at all
-  // happens once the houses are caught up.
-  const [, { houses, dueSoon }, updatesThisWeek, updatesLastWeek] = await Promise.all([
-    backfillProgrammes(),
-    loadToday(),
-    prisma.update.count({ where: { publishedAt: { gte: weekAgo }, deletedAt: null } }),
-    prisma.update.count({
-      where: { publishedAt: { gte: twoWeeksAgo, lt: weekAgo }, deletedAt: null },
-    }),
-  ]);
+  // The one read the page cannot draw without. The two update counts and the
+  // catch-up for older houses used to ride along here and hold the whole page
+  // back; they now arrive behind it (see UpdatesTile and CatchUp), so the page
+  // shows after this single read.
+  const { houses, dueSoon } = await loadToday();
 
   // ── The portfolio, rolled up ────────────────────────────────────────────
   // One row per phase of the build, split by whether the house is holding the
@@ -327,18 +315,20 @@ export default async function Today() {
           }
         />
 
-        <Tile
-          href="/admin/friday"
-          icon={CalendarCheck}
-          label="Updates sent"
-          value={updatesThisWeek}
-          foot={
-            updatesLastWeek === 0
-              ? "Nothing sent last week"
-              : `${signed(updatesThisWeek - updatesLastWeek)} on last week`
+        <Suspense
+          fallback={
+            <Tile href="/admin/friday" icon={CalendarCheck} label="Updates sent" value="—" foot="Counting…" />
           }
-        />
+        >
+          <UpdatesTile />
+        </Suspense>
       </div>
+
+      {/* Draws nothing. Brings houses given a handover before due dates built
+          themselves up to date, after everything above is already on screen. */}
+      <Suspense fallback={null}>
+        <CatchUp />
+      </Suspense>
 
       {/* ── The portfolio ─────────────────────────────────────────────────── */}
       <section className="mb-10">
@@ -647,6 +637,40 @@ function Meter({ filled, total }: { filled: number; total: number }) {
       />
     </span>
   );
+}
+
+async function UpdatesTile() {
+  const now = Date.now();
+  const weekAgo = new Date(now - 7 * 86_400_000);
+  const twoWeeksAgo = new Date(now - 14 * 86_400_000);
+  const [thisWeek, lastWeek] = await Promise.all([
+    prisma.update.count({ where: { publishedAt: { gte: weekAgo }, deletedAt: null } }),
+    prisma.update.count({
+      where: { publishedAt: { gte: twoWeeksAgo, lt: weekAgo }, deletedAt: null },
+    }),
+  ]);
+  return (
+    <Tile
+      href="/admin/friday"
+      icon={CalendarCheck}
+      label="Updates sent"
+      value={thisWeek}
+      foot={
+        lastWeek === 0
+          ? "Nothing sent last week"
+          : `${signed(thisWeek - lastWeek)} on last week`
+      }
+    />
+  );
+}
+
+async function CatchUp() {
+  try {
+    await backfillProgrammes();
+  } catch (cause) {
+    console.error("programme catch-up failed", cause);
+  }
+  return null;
 }
 
 function Tile({

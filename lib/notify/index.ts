@@ -226,10 +226,15 @@ export async function staffRecipients(): Promise<Recipient[]> {
     select: { id: true, name: true, email: true },
   });
 
+  // The address a staff login signs in with is rarely the inbox the person
+  // reads. STAFF_NOTIFY_EMAIL redirects every staff message — the evening list,
+  // an owner's question — to the real one, without touching the login.
+  const inbox = process.env.STAFF_NOTIFY_EMAIL?.trim();
+
   return users.map((u) => ({
     audience: "staff" as const,
     userId: u.id,
-    email: u.email,
+    email: inbox || u.email,
     name: u.name ?? "there",
   }));
 }

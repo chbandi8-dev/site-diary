@@ -520,10 +520,13 @@ export async function createOwnerDefect(
 
 /** The staff to tell. Kept here so owner routes never reach for the users table. */
 export async function staffForNotification() {
-  return prisma.user.findMany({
+  const users = await prisma.user.findMany({
     where: { role: { in: ["admin", "pm"] } },
     select: { id: true, name: true, email: true },
   });
+  // Same redirect as staffRecipients: the login address is not the inbox.
+  const inbox = process.env.STAFF_NOTIFY_EMAIL?.trim();
+  return inbox ? users.map((u) => ({ ...u, email: inbox })) : users;
 }
 
 /** The house's address, for a subject line. */
