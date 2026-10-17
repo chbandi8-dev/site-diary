@@ -23,16 +23,19 @@ export type ParsedHouse = {
   /** Next week schedule lines, as he wrote them. */
   next: string[];
   storeys: 1 | 2 | null;
+  /** What is holding the house up, in his words. Owners read this line. */
+  waitingOn: string | null;
   /** The window he has promised, as ISO dates. A single date is both ends. */
   handoverFrom: string | null;
   handoverTo: string | null;
 };
 
-type Section = "owner" | "status" | "next" | "storeys" | "handover";
+type Section = "owner" | "status" | "next" | "storeys" | "handover" | "waiting";
 
 // The two newer headers insist on a colon or dash (or standing alone on the
 // line). "Handover pack sent" is a status item, not a heading, and must stay one.
 const HEADERS: [Section, RegExp][] = [
+  ["waiting", /^waiting(?:\s+on)?\b(?:\s*[:\-–—]+\s*(.*)|\s*)$/i],
   ["storeys", /^(?:storeys?|stories|story|levels?)\b(?:\s*[:\-–—]+\s*(.*)|\s*)$/i],
   ["handover", /^(?:hand.?over(?:\s+date)?|completion|practical completion)\b(?:\s*[:\-–—]+\s*(.*)|\s*)$/i],
   ["owner", /^owners?\b\s*[:\-–—]*\s*(.*)$/i],
@@ -88,6 +91,7 @@ export function parsePastedHouses(text: string): ParsedHouse[] {
       status: [],
       next: [],
       storeys: null,
+      waitingOn: null,
       handoverFrom: null,
       handoverTo: null,
     };
@@ -101,6 +105,13 @@ export function parsePastedHouses(text: string): ParsedHouse[] {
     else if (kind === "storeys") {
       if (/\b(2|two|double)\b/i.test(value)) target.storeys = 2;
       else if (/\b(1|one|single)\b/i.test(value)) target.storeys = 1;
+    } else if (kind === "waiting") {
+      const item = cleanItem(value);
+      // "No" and "nothing" are answers, not something to wait on.
+      if (item && !/^(no|none|nothing|nil|n\/a|na)$/i.test(item)) {
+        target.waitingOn = (target.waitingOn ? `${target.waitingOn}; ` : "") + item;
+        target.waitingOn = target.waitingOn.slice(0, 200);
+      }
     } else if (kind === "handover") {
       const window = parseHandover(value);
       if (window) {
@@ -164,6 +175,15 @@ const STAGE_RULES: [RegExp, string][] = [
 
 const DONE = /\b(done|complete|completed|finished|delivered|installed|passed)\b/i;
 
+// Getting ready for a stage is not the stage. "Roof material delivered" and
+// "roofing measurement done" mean the roof is booked, not that anyone is on it —
+// and reading them as work started put a roof "underway" that was in fact due
+// to begin next week. Unless the line also says something was physically
+// finished ("windows delivered and installed").
+const PREP = /\b(measure|measured|measurement|measurements|delivered|delivery|ordered|quote|quoted|approved|approval|selected|selections?|submitted|lodged|booked|scheduled|marked)\b/i;
+const PHYSICAL = /\b(installed|fitted|laid|poured|finished|completed)\b/i;
+const isPrep = (line: string) => PREP.test(line) && !PHYSICAL.test(line);
+
 export type StagePlan = { stage: string; status: "complete" | "in_progress" | "scheduled" };
 
 function stageFor(line: string, known: Set<string>): string | null {
@@ -191,13 +211,18 @@ export function planStages(
 ): { plan: StagePlan[]; unmatched: string[] } {
   const known = new Set(stageNames);
   const unmatched: string[] = [];
-  const reported = new Map<string, boolean>(); // stage -> every line about it says done
+  const reported = new Map<string, boolean>(); // stage -> every line of real work says done
+  const preparing = new Set<string>(); // stage -> only getting-ready lines so far
   const upcoming = new Set<string>();
 
   for (const line of status) {
     const stage = stageFor(line, known);
     if (!stage) {
       unmatched.push(line);
+      continue;
+    }
+    if (isPrep(line)) {
+      preparing.add(stage);
       continue;
     }
     reported.set(stage, (reported.get(stage) ?? true) && DONE.test(line));
@@ -213,13 +238,15 @@ export function planStages(
 
   const plan: StagePlan[] = [];
   for (const stage of stageNames) {
-    const inStatus = reported.has(stage);
+    const worked = reported.has(stage);
     const inNext = upcoming.has(stage);
-    if (!inStatus && !inNext) continue;
+    // Only getting ready, and not on next week's list: nothing to say about the
+    // stage itself yet. The line is still kept in his private note.
+    if (!worked && !inNext) continue;
     plan.push({
       stage,
       status: inNext
-        ? inStatus
+        ? worked
           ? "in_progress"
           : "scheduled"
         : reported.get(stage)
@@ -303,4 +330,93 @@ export function parseHandover(
     from: iso(new Date(Date.UTC(startYear, first, 1))),
     to: iso(new Date(Date.UTC(endYear, last + 1, 0))),
   };
+}
+
+/* ── Pasting onto a house that is already there ──────────────────────────── */
+
+export type ExistingHouse = {
+  id: string;
+  storeys: number;
+  handoverTo: Date | null;
+  waitingOn: string | null;
+  nextWeek: string | null;
+  owners: { ownerId: string; name: string; phone: string | null }[];
+};
+
+export type MergePlan = {
+  /** What would change, for the screen. */
+  changes: string[];
+  /** Things he gave that were deliberately left alone, and why. */
+  kept: string[];
+  storeys?: 1 | 2;
+  handover?: { from: string; to: string };
+  waitingOn?: string;
+  nextWeek?: string;
+  phones: { ownerId: string; phone: string }[];
+  newOwners: ParsedOwner[];
+};
+
+const first = (name: string) => name.trim().toLowerCase().split(/\s+/)[0];
+
+/**
+ * What a second paste adds to a house that is already on the books.
+ *
+ * Fills in what is missing and does not overwrite what is set. The things an
+ * owner can read — the handover window and the waiting-on line — are never
+ * replaced, because a date or a reason that changes underneath an owner because
+ * somebody pasted a list is exactly the kind of change that should be a
+ * decision. Stages and the private note are not touched at all: those are the
+ * running record of the build, and this is only a list.
+ *
+ * Next week's schedule is the exception, replaced when given. It is a weekly
+ * note, and pasting this week's is plainly asking for this week's to show.
+ */
+export function planMerge(h: ParsedHouse, e: ExistingHouse): MergePlan {
+  const plan: MergePlan = { changes: [], kept: [], phones: [], newOwners: [] };
+
+  if (h.storeys && h.storeys !== e.storeys) {
+    plan.storeys = h.storeys;
+    plan.changes.push(h.storeys === 2 ? "double storey" : "single storey");
+  }
+
+  if (h.handoverFrom && h.handoverTo) {
+    if (!e.handoverTo) {
+      plan.handover = { from: h.handoverFrom, to: h.handoverTo };
+      plan.changes.push("handover date");
+    } else if (e.handoverTo.toISOString().slice(0, 10) !== h.handoverTo) {
+      plan.kept.push("handover is already set, so it was left as it is");
+    }
+  }
+
+  if (h.waitingOn) {
+    if (!e.waitingOn) {
+      plan.waitingOn = h.waitingOn;
+      plan.changes.push("what it is waiting on");
+    } else if (e.waitingOn !== h.waitingOn) {
+      plan.kept.push("waiting-on is already set, so it was left as it is");
+    }
+  }
+
+  if (h.next.length > 0) {
+    const text = sentence(h.next);
+    if (text !== e.nextWeek) {
+      plan.nextWeek = text;
+      plan.changes.push("next week's schedule");
+    }
+  }
+
+  for (const o of h.owners) {
+    const match =
+      e.owners.find((x) => x.name.trim().toLowerCase() === o.name.trim().toLowerCase()) ??
+      e.owners.find((x) => first(x.name) === first(o.name));
+    if (!match) {
+      plan.newOwners.push(o);
+      plan.changes.push(`${o.name} added`);
+    } else if (o.phone && !match.phone) {
+      plan.phones.push({ ownerId: match.ownerId, phone: o.phone });
+      plan.changes.push(`${match.name}'s mobile`);
+    }
+  }
+
+  return plan;
 }

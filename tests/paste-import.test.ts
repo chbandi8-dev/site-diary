@@ -141,3 +141,107 @@ test("nothing recognisable gives nothing, never a guess", () => {
   assert.equal(parseHandover("soon", OCT_2026), null);
   assert.equal(parseHandover("", OCT_2026), null);
 });
+
+/* ── getting ready is not the work ── */
+
+test("material delivered and a measure done means BOOKED, not underway", () => {
+  const { plan } = planStages(
+    ["Roofing measurement done", "Roof material delivered"],
+    ["Roof installation"],
+    STAGES
+  );
+  assert.deepEqual(plan, [{ stage: "Roof", status: "scheduled" }]);
+});
+
+test("but a line that says it was physically finished still counts as work", () => {
+  const { plan } = planStages(["Windows delivered and installed"], [], STAGES);
+  assert.deepEqual(plan, [{ stage: "Windows & external doors", status: "complete" }]);
+});
+
+test("only getting ready, and not next week: nothing is claimed about the stage", () => {
+  assert.deepEqual(planStages(["Roof material delivered"], [], STAGES).plan, []);
+});
+
+test("a Waiting on line is read, and 'No' is an answer rather than something to wait on", () => {
+  const [a, b, c] = parsePastedHouses(
+    [
+      "1 Aaa Street, Parramatta\nWaiting on: Owners selections for kitchen, tiles\n",
+      "2 Bbb Street, Parramatta\nWaiting on: No\n",
+      "3 Ccc Street, Parramatta\nProject status:\nWaiting for the certifier\n",
+    ].join("\n")
+  );
+  assert.equal(a.waitingOn, "Owners selections for kitchen, tiles");
+  assert.equal(b.waitingOn, null);
+  // Without a colon it is an ordinary status line, not a heading.
+  assert.equal(c.waitingOn, null);
+  assert.deepEqual(c.status, ["Waiting for the certifier"]);
+});
+
+/* ── a second paste onto a house that is already there ── */
+
+import { planMerge, type ExistingHouse } from "../lib/paste-import";
+
+const existing = (over: Partial<ExistingHouse> = {}): ExistingHouse => ({
+  id: "h1",
+  storeys: 1,
+  handoverTo: null,
+  waitingOn: null,
+  nextWeek: null,
+  owners: [{ ownerId: "o1", name: "Jane Smith", phone: null }],
+  ...over,
+});
+const parsed = (text: string) => parsePastedHouses(text)[0];
+
+test("fills in what is missing: storeys, handover, mobiles", () => {
+  const plan = planMerge(
+    parsed("1 Test Street, Parramatta\nOwner\nJane Smith 0412 345 678\nStoreys: double\nHandover: March\n"),
+    existing()
+  );
+  assert.equal(plan.storeys, 2);
+  assert.ok(plan.handover);
+  assert.deepEqual(plan.phones, [{ ownerId: "o1", phone: "0412 345 678" }]);
+  assert.equal(plan.newOwners.length, 0);
+});
+
+test("never replaces the handover owners can already see", () => {
+  const plan = planMerge(
+    parsed("1 Test Street, Parramatta\nHandover: March\n"),
+    existing({ handoverTo: new Date(Date.UTC(2027, 3, 30)) })
+  );
+  assert.equal(plan.handover, undefined);
+  assert.match(plan.kept.join(" "), /handover is already set/);
+});
+
+test("never replaces a waiting-on that is already set", () => {
+  const plan = planMerge(
+    parsed("1 Test Street, Parramatta\nWaiting on: tiles\n"),
+    existing({ waitingOn: "the certifier" })
+  );
+  assert.equal(plan.waitingOn, undefined);
+  assert.equal(plan.kept.length, 1);
+});
+
+test("a mobile already saved is not overwritten", () => {
+  const plan = planMerge(
+    parsed("1 Test Street, Parramatta\nOwner\nJane Smith 0499 999 999\n"),
+    existing({ owners: [{ ownerId: "o1", name: "Jane Smith", phone: "0412 345 678" }] })
+  );
+  assert.deepEqual(plan.phones, []);
+});
+
+test("a person is matched by first name, and a stranger is added rather than guessed at", () => {
+  const plan = planMerge(
+    parsed("1 Test Street, Parramatta\nOwner\nJane 0412 345 678 & Bob Jones\n"),
+    existing()
+  );
+  assert.deepEqual(plan.phones, [{ ownerId: "o1", phone: "0412 345 678" }]);
+  assert.deepEqual(plan.newOwners, [{ name: "Bob Jones", phone: null }]);
+});
+
+test("the same list pasted twice changes nothing the second time", () => {
+  const plan = planMerge(
+    parsed("1 Test Street, Parramatta\nStoreys: single\nNext week schedule:\nPainting\n"),
+    existing({ nextWeek: "Painting." })
+  );
+  assert.equal(plan.changes.length, 0);
+});

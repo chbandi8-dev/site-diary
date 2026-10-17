@@ -29,6 +29,9 @@ type Preview = {
   plan: { stage: string; status: "complete" | "in_progress" | "scheduled" }[];
   unmatched: string[];
   duplicate: boolean;
+  waitingOn: string | null;
+  /** For a house already on the books: what pasting would fill in, and what it leaves alone. */
+  merge: { changes: string[]; kept: string[] } | null;
 };
 
 /** "1 Mar – 30 Apr 2027", or one date when it is a single day. */
@@ -52,7 +55,11 @@ export default function PasteHouses() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview[] | null>(null);
-  const [done, setDone] = useState<{ created: { id: string; address: string }[]; skipped: string[] } | null>(null);
+  const [done, setDone] = useState<{
+    created: { id: string; address: string }[];
+    updated: { id: string; address: string; changes: string[] }[];
+    skipped: string[];
+  } | null>(null);
 
   function close() {
     setOpen(false);
@@ -87,6 +94,17 @@ export default function PasteHouses() {
   }
 
   const toAdd = preview?.filter((p) => !p.duplicate).length ?? 0;
+  const toUpdate = preview?.filter((p) => p.duplicate && (p.merge?.changes.length ?? 0) > 0).length ?? 0;
+  const goLabel =
+    toAdd > 0 && toUpdate > 0
+      ? `Add ${toAdd}, update ${toUpdate}`
+      : toUpdate > 0
+        ? toUpdate === 1
+          ? "Update this house"
+          : `Update ${toUpdate} houses`
+        : toAdd === 1
+          ? "Add this house"
+          : `Add these ${toAdd} houses`;
 
   return (
     <>
@@ -161,8 +179,11 @@ export default function PasteHouses() {
                     it — <span className="text-white/55">Jane Smith 0412 345 678 &amp; Tom Smith 0498 765 432</span> —
                     and the WhatsApp button works straight away. Add{" "}
                     <span className="text-white/55">Storeys: double</span> and{" "}
-                    <span className="text-white/55">Handover: March to April</span> lines too:
-                    the handover is what lets the app warn you which houses are slipping.
+                    <span className="text-white/55">Handover: March to April</span> and{" "}
+                    <span className="text-white/55">Waiting on: the windows</span> lines too. The
+                    handover is what lets the app warn you which houses are slipping. Pasting
+                    onto a house already there fills in what is missing and never replaces
+                    what an owner can see.
                   </p>
                 </>
               )}
@@ -183,9 +204,21 @@ export default function PasteHouses() {
                       </p>
 
                       {h.duplicate ? (
-                        <p className="mt-1.5 text-sm text-white/50">
-                          Already on your list — this one is skipped.
-                        </p>
+                        <div className="mt-1.5 text-sm text-white/50">
+                          <p>Already on your list.</p>
+                          {h.merge && h.merge.changes.length > 0 ? (
+                            <p className="mt-1 text-white/75">
+                              Will fill in: {h.merge.changes.join(", ")}.
+                            </p>
+                          ) : (
+                            <p className="mt-1">Nothing new to add — skipped.</p>
+                          )}
+                          {h.merge?.kept.map((k) => (
+                            <p key={k} className="mt-1 text-xs text-white/40">
+                              {k}.
+                            </p>
+                          ))}
+                        </div>
                       ) : (
                         <dl className="mt-2.5 flex flex-col gap-2 text-sm">
                           <div>
@@ -201,6 +234,12 @@ export default function PasteHouses() {
                                   ))}
                             </dd>
                           </div>
+                          {h.waitingOn && (
+                            <div>
+                              <dt className="font-mono text-[10px] uppercase tracking-[0.13em] text-white/30">Waiting on</dt>
+                              <dd className="text-white/75">{h.waitingOn}</dd>
+                            </div>
+                          )}
                           {(h.storeys || h.handoverTo) && (
                             <div>
                               <dt className="font-mono text-[10px] uppercase tracking-[0.13em] text-white/30">House</dt>
@@ -256,9 +295,25 @@ export default function PasteHouses() {
                       </Link>
                     </li>
                   ))}
+                  {done.updated.map((u) => (
+                    <li key={u.id} className="flex items-center gap-2.5 rounded-lg border border-white/[0.07] bg-dark px-4 py-3 text-sm">
+                      <Check size={15} aria-hidden="true" className="flex-none text-gold" />
+                      <span className="min-w-0 flex-1 text-white/80">
+                        {u.address} updated
+                        <span className="block text-xs text-white/40">{u.changes.join(", ")}</span>
+                      </span>
+                      <Link
+                        href={`/admin/houses/${u.id}`}
+                        onClick={close}
+                        className="text-xs text-gold underline underline-offset-4"
+                      >
+                        Open
+                      </Link>
+                    </li>
+                  ))}
                   {done.skipped.map((s) => (
                     <li key={s} className="rounded-lg border border-white/[0.06] px-4 py-3 text-sm text-white/45">
-                      {s} — skipped, already on your list
+                      {s} — nothing new to add
                     </li>
                   ))}
                 </ul>
@@ -285,11 +340,11 @@ export default function PasteHouses() {
                   <button
                     type="button"
                     onClick={() => call(true)}
-                    disabled={busy || toAdd === 0}
+                    disabled={busy || toAdd + toUpdate === 0}
                     className="flex min-h-[52px] flex-1 items-center justify-center gap-2 rounded-xl bg-gold text-[15px] font-semibold text-dark disabled:opacity-35"
                   >
                     {busy && <Loader2 size={17} className="animate-spin" />}
-                    {toAdd === 1 ? "Add this house" : `Add these ${toAdd} houses`}
+                    {goLabel}
                   </button>
                 </>
               ) : (

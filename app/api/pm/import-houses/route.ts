@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createHouse, NoStageTemplates } from "@/lib/create-house";
 import { refreshQuietly } from "@/lib/programme";
-import { parsePastedHouses, planStages, sentence } from "@/lib/paste-import";
+import { parsePastedHouses, planMerge, planStages, sentence, type MergePlan } from "@/lib/paste-import";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -17,8 +17,10 @@ export const dynamic = "force-dynamic";
  * server, so what is saved is always what the same words produce — never
  * whatever a client says the preview contained.
  *
- * A house whose address is already on the books is skipped and reported, never
- * duplicated and never merged: pasting the same list twice must be harmless.
+ * A house whose address is already on the books is never duplicated. Pasting
+ * onto it fills in what is missing — a mobile, storeys, a handover that was never
+ * set — and leaves alone anything already there that an owner can read. Pasting
+ * the same list twice changes nothing the second time. See `planMerge`.
  */
 
 const body = z.object({
@@ -54,24 +56,91 @@ export async function POST(req: NextRequest) {
   }
 
   const existing = await prisma.house.findMany({
+    relationLoadStrategy: "join",
     where: { OR: houses.map((h) => ({ address: { equals: h.address, mode: "insensitive" as const } })) },
-    select: { address: true },
+    select: {
+      id: true,
+      address: true,
+      storeys: true,
+      handoverTo: true,
+      targetHandover: true,
+      waitingOn: true,
+      nextWeek: true,
+      owners: {
+        where: { revokedAt: null },
+        select: { owner: { select: { id: true, name: true, phone: true } } },
+      },
+    },
   });
-  const have = new Set(existing.map((h) => h.address.toLowerCase()));
+  const have = new Map(existing.map((h) => [h.address.toLowerCase(), h]));
 
   const rows = houses.map((h) => {
     const { plan, unmatched } = planStages(h.status, h.next, stageNames);
-    return { ...h, plan, unmatched, duplicate: have.has(h.address.toLowerCase()) };
+    const there = have.get(h.address.toLowerCase());
+    const merge: (MergePlan & { houseId: string }) | null = there
+      ? {
+          houseId: there.id,
+          ...planMerge(h, {
+            id: there.id,
+            storeys: there.storeys,
+            handoverTo: there.handoverTo,
+            waitingOn: there.waitingOn,
+            nextWeek: there.nextWeek,
+            owners: there.owners.map((o) => ({
+              ownerId: o.owner.id,
+              name: o.owner.name,
+              phone: o.owner.phone,
+            })),
+          }),
+        }
+      : null;
+    return { ...h, plan, unmatched, duplicate: Boolean(there), merge };
   });
 
   if (!parsed.data.commit) return NextResponse.json({ houses: rows });
 
   const created: { id: string; address: string }[] = [];
+  const updated: { id: string; address: string; changes: string[] }[] = [];
   const skipped: string[] = [];
 
   for (const h of rows) {
-    if (h.duplicate) {
-      skipped.push(h.address);
+    if (h.duplicate && h.merge) {
+      if (h.merge.changes.length === 0) {
+        skipped.push(h.address);
+        continue;
+      }
+      try {
+        const m = h.merge;
+        const now = new Date();
+        const there = have.get(h.address.toLowerCase())!;
+        const data: Record<string, unknown> = {};
+        if (m.storeys) data.storeys = m.storeys;
+        if (m.handover) {
+          data.handoverFrom = new Date(`${m.handover.from}T00:00:00.000Z`);
+          data.handoverTo = new Date(`${m.handover.to}T00:00:00.000Z`);
+          // The end of the window is the promise, unless one was already made.
+          if (!there.targetHandover) data.targetHandover = data.handoverTo;
+        }
+        if (m.waitingOn) data.waitingOn = m.waitingOn;
+        if (m.nextWeek) {
+          data.nextWeek = m.nextWeek;
+          data.nextWeekSetAt = now;
+        }
+        if (Object.keys(data).length > 0) {
+          await prisma.house.update({ where: { id: m.houseId }, data });
+        }
+        for (const p of m.phones) {
+          await prisma.owner.update({ where: { id: p.ownerId }, data: { phone: p.phone } });
+        }
+        for (const o of m.newOwners) {
+          const owner = await prisma.owner.create({ data: { name: o.name, phone: o.phone } });
+          await prisma.houseOwner.create({ data: { houseId: m.houseId, ownerId: owner.id } });
+        }
+        if (m.handover) await refreshQuietly(m.houseId);
+        updated.push({ id: m.houseId, address: h.address, changes: m.changes });
+      } catch {
+        skipped.push(h.address);
+      }
       continue;
     }
     try {
@@ -82,6 +151,7 @@ export async function POST(req: NextRequest) {
         address: h.address,
         suburb: h.suburb,
         storeys: h.storeys ?? 1,
+        waitingOn: h.waitingOn,
         owners: h.owners.map((o) => ({ name: o.name, phone: o.phone })),
         currentStage: h.plan[0]?.stage ?? null,
         handoverFrom: h.handoverFrom,
@@ -133,5 +203,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ created, skipped });
+  return NextResponse.json({ created, updated, skipped });
 }
