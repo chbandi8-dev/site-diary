@@ -1,4 +1,4 @@
-name: Mirror to the deployment repo
+name: Check, then mirror to the deployment repo
 
 # Development happens in this repository; Vercel watches a different one.
 # Rather than copying commits across by hand from a laptop, every push here is
@@ -14,6 +14,11 @@ on:
   # Lets the mirror be re-run by hand from the Actions tab — which works on a
   # phone — if a push happened while the token was missing or expired.
   workflow_dispatch:
+    inputs:
+      skip_checks:
+        description: "Go live even though the checks failed. Only if the checks themselves are what is broken."
+        type: boolean
+        default: false
 
 # Nothing here reads or writes this repository through the default token.
 permissions:
@@ -26,7 +31,55 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # A push goes live only if it still builds and still passes its tests.
+  #
+  # Until this existed, the only automated step between a commit and his phone
+  # was the copy itself. A typo that broke the build, or a change that quietly
+  # blanked the stage board, reached the live site and was found by whoever
+  # tapped it first. Vercel keeps serving the previous version when a build
+  # fails, so the worst case of a failed build was "nothing changed" — but a
+  # change that builds and is wrong sailed straight through, and that is what
+  # the tests are for.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Runs `prisma generate` through the postinstall script.
+      - run: npm ci --no-audit --no-fund
+
+      - name: Types
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
+      # The build needs the variables to exist, not to work: nothing here talks
+      # to a database, and these values are placeholders for that reason.
+      - name: Build
+        run: npx next build
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+          DIRECT_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+          NEXTAUTH_SECRET: ci-placeholder-not-a-secret
+          NEXTAUTH_URL: http://localhost:3000
+          NEXT_PUBLIC_SITE_URL: http://localhost:3000
+
   mirror:
+    needs: check
+    # `!cancelled()` so this still gets a say when `check` failed; without it a
+    # failed check would skip the job before the override below was read.
+    if: ${{ !cancelled() && (needs.check.result == 'success' || inputs.skip_checks == true) }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out the full history
