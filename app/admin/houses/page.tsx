@@ -43,6 +43,7 @@ export default async function HousesPage({
       orderBy: { position: "asc" },
     }),
     prisma.house.findMany({
+      relationLoadStrategy: "join",
       where: showDone ? { status: "handed_over" } : { status: { not: "handed_over" } },
       select: {
         id: true,
@@ -71,6 +72,7 @@ export default async function HousesPage({
     }),
     prisma.owner.count({ where: { email: { endsWith: "example.invalid" } } }).then((n) => n > 0),
     prisma.boardLink.findMany({
+      relationLoadStrategy: "join",
       where: { revokedAt: null },
       select: {
         id: true,

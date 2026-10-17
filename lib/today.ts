@@ -23,6 +23,7 @@ export async function loadToday() {
 
   const [houses, dueSoon] = await Promise.all([
     prisma.house.findMany({
+      relationLoadStrategy: "join",
       where: { status: { not: "handed_over" } },
       select: {
         id: true,
@@ -78,6 +79,7 @@ export async function loadToday() {
     // rather than recomputed: twenty-five forecasts on a dashboard render is
     // not a dashboard. One query across every house, not one per house.
     prisma.houseStage.findMany({
+      relationLoadStrategy: "join",
       where: {
         dueBy: { not: null, lte: horizon },
         status: { notIn: ["complete", "not_applicable"] },

@@ -1,5 +1,9 @@
 generator client {
   provider = "prisma-client-js"
+  // Lets a read that pulls in related rows do it in ONE statement rather than one
+  // per relation. Each statement is a round trip to the database; a house page
+  // used to make sixteen, one after another. See relationLoadStrategy below.
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {

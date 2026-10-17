@@ -38,6 +38,7 @@ export type Board = {
 
 export async function readBoard(developmentId: string | null): Promise<Board> {
   const houses = await prisma.house.findMany({
+    relationLoadStrategy: "join",
     where: {
       status: { not: "handed_over" },
       ...(developmentId ? { developmentId } : {}),

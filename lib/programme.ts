@@ -22,6 +22,7 @@ import { forecast, backwardPlan, type ForecastStage } from "@/lib/forecast";
 
 export async function loadProgramme(houseId: string, overrideTarget?: Date) {
   const house = await prisma.house.findUnique({
+    relationLoadStrategy: "join",
     where: { id: houseId },
     select: {
       id: true,

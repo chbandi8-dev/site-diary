@@ -58,16 +58,21 @@ type Band = { title: string; note: string; tasks: Task[]; show: number };
 export default async function Today() {
   await requireStaff();
 
-  // Houses given a handover before due dates built themselves. A few at a
-  // time, and nothing at all once they are caught up.
-  await backfillProgrammes();
-  const { houses, dueSoon } = await loadToday();
-
   const now = Date.now();
   const weekAgo = new Date(now - 7 * 86_400_000);
   const twoWeeksAgo = new Date(now - 14 * 86_400_000);
 
-  const [updatesThisWeek, updatesLastWeek] = await Promise.all([
+  // Everything at once. These were three groups awaited one after another, and
+  // none depends on another's answer — so the page waited for the sum of their
+  // trips to the database instead of the longest one.
+  //
+  // The catch-up for houses given a handover before due dates built themselves
+  // runs alongside rather than before. The first view after it has work to do
+  // may not yet reflect what it fixes; every view after does, and nothing at all
+  // happens once the houses are caught up.
+  const [, { houses, dueSoon }, updatesThisWeek, updatesLastWeek] = await Promise.all([
+    backfillProgrammes(),
+    loadToday(),
     prisma.update.count({ where: { publishedAt: { gte: weekAgo }, deletedAt: null } }),
     prisma.update.count({
       where: { publishedAt: { gte: twoWeeksAgo, lt: weekAgo }, deletedAt: null },

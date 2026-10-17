@@ -30,6 +30,7 @@ export default async function HouseCapture({ params }: { params: { id: string } 
   // three times over on the page he opens most.
   const [house, recentPhotos, trades] = await Promise.all([
     prisma.house.findUnique({
+      relationLoadStrategy: "join",
       where: { id: params.id },
       select: {
         id: true,
