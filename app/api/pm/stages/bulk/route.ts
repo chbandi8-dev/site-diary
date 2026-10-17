@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { refreshQuietly } from "@/lib/programme";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +71,8 @@ export async function POST(req: NextRequest) {
     });
     changed++;
   }
+
+  for (const id of Array.from(new Set(stages.map((s) => s.houseId)))) await refreshQuietly(id);
 
   // Deliberately silent to owners. Marking six lots is record keeping; six
   // milestone emails going out together, each claiming to be a personal note

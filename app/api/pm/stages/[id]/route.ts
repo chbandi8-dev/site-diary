@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { milestoneCopyFor } from "@/lib/stage-copy";
 import { z } from "zod";
+import { refreshQuietly } from "@/lib/programme";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const stage = await prisma.houseStage.findUnique({
     where: { id: params.id },
-    select: { id: true, startedAt: true, name: true, status: true },
+    select: { id: true, houseId: true, startedAt: true, name: true, status: true },
   });
   if (!stage) return NextResponse.json({ error: "Stage not found" }, { status: 404 });
 
@@ -48,6 +49,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       completedAt: status === "complete" ? now : null,
     },
   });
+
+  // His due dates follow the build. Quietly: a programme that fails to refresh
+  // must never be the reason a tick did not save.
+  await refreshQuietly(stage.houseId);
 
   // Finishing a milestone is the best trigger in the app: he has just told us
   // something the owner genuinely cares about, at the moment it happened, and
@@ -78,6 +83,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     where: { id: params.id },
     select: {
       id: true,
+      houseId: true,
       name: true,
       _count: { select: { updates: true, photos: true, inspections: true } },
     },
@@ -98,5 +104,6 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   }
 
   await prisma.houseStage.delete({ where: { id: stage.id } });
+  await refreshQuietly(stage.houseId);
   return NextResponse.json({ ok: true });
 }

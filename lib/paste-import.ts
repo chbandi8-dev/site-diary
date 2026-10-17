@@ -22,11 +22,19 @@ export type ParsedHouse = {
   status: string[];
   /** Next week schedule lines, as he wrote them. */
   next: string[];
+  storeys: 1 | 2 | null;
+  /** The window he has promised, as ISO dates. A single date is both ends. */
+  handoverFrom: string | null;
+  handoverTo: string | null;
 };
 
-type Section = "owner" | "status" | "next";
+type Section = "owner" | "status" | "next" | "storeys" | "handover";
 
+// The two newer headers insist on a colon or dash (or standing alone on the
+// line). "Handover pack sent" is a status item, not a heading, and must stay one.
 const HEADERS: [Section, RegExp][] = [
+  ["storeys", /^(?:storeys?|stories|story|levels?)\b(?:\s*[:\-–—]+\s*(.*)|\s*)$/i],
+  ["handover", /^(?:hand.?over(?:\s+date)?|completion|practical completion)\b(?:\s*[:\-–—]+\s*(.*)|\s*)$/i],
   ["owner", /^owners?\b\s*[:\-–—]*\s*(.*)$/i],
   ["status", /^(?:project\s+)?status\b\s*[:\-–—]*\s*(.*)$/i],
   ["next", /^next\s+week(?:'s)?(?:\s+schedule)?\b\s*[:\-–—]*\s*(.*)$/i],
@@ -79,6 +87,9 @@ export function parsePastedHouses(text: string): ParsedHouse[] {
       owners: [],
       status: [],
       next: [],
+      storeys: null,
+      handoverFrom: null,
+      handoverTo: null,
     };
     houses.push(cur);
     section = null;
@@ -87,7 +98,16 @@ export function parsePastedHouses(text: string): ParsedHouse[] {
 
   const add = (target: ParsedHouse, kind: Section, value: string) => {
     if (kind === "owner") target.owners.push(...parseOwners(value));
-    else {
+    else if (kind === "storeys") {
+      if (/\b(2|two|double)\b/i.test(value)) target.storeys = 2;
+      else if (/\b(1|one|single)\b/i.test(value)) target.storeys = 1;
+    } else if (kind === "handover") {
+      const window = parseHandover(value);
+      if (window) {
+        target.handoverFrom = window.from;
+        target.handoverTo = window.to;
+      }
+    } else {
       const item = cleanItem(value);
       if (item) (kind === "status" ? target.status : target.next).push(item);
     }
@@ -213,4 +233,74 @@ export function planStages(
 /** "aircon ducting" -> "Aircon ducting." — his words, only tidied. */
 export function sentence(items: string[]): string {
   return items.map((i) => i.charAt(0).toUpperCase() + i.slice(1)).join(". ") + (items.length ? "." : "");
+}
+
+
+/* ── Handover, as he says it ─────────────────────────────────────────────── */
+
+const MONTH = "(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
+const MONTH_RE = new RegExp(`\\b${MONTH}\\b`, "gi");
+const DAY_MONTH = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${MONTH}\\b(?:\\s+(\\d{4}))?`, "i");
+
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+const monthIndex = (word: string) =>
+  ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"].indexOf(
+    word.slice(0, 3).toLowerCase()
+  );
+
+/**
+ * "March", "March to April", "April 2027", "30 April 2027", "30/4/2027".
+ *
+ * A month on its own is the whole month, because that is how he promises it —
+ * and a window is read to its far end, since that is the date he has committed
+ * to. A month with no year means the next one to come: "March" said in October
+ * is next March, never one already gone.
+ */
+export function parseHandover(
+  text: string,
+  today: Date = new Date()
+): { from: string; to: string } | null {
+  const t = text.trim();
+  if (!t) return null;
+  const thisYear = today.getUTCFullYear();
+  const thisMonth = today.getUTCMonth();
+
+  const full = t.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/);
+  if (full) return { from: full[0], to: full[0] };
+
+  const slashed = t.match(/\b(\d{1,2})[\/.](\d{1,2})[\/.](\d{2}|\d{4})\b/);
+  if (slashed) {
+    const year = slashed[3].length === 2 ? 2000 + Number(slashed[3]) : Number(slashed[3]);
+    const d = new Date(Date.UTC(year, Number(slashed[2]) - 1, Number(slashed[1])));
+    return Number.isNaN(d.getTime()) ? null : { from: iso(d), to: iso(d) };
+  }
+
+  const dm = t.match(DAY_MONTH);
+  if (dm) {
+    const m = monthIndex(dm[2]);
+    let year = dm[3] ? Number(dm[3]) : thisYear;
+    let d = new Date(Date.UTC(year, m, Number(dm[1])));
+    if (!dm[3] && d.getTime() < Date.UTC(thisYear, thisMonth, today.getUTCDate())) {
+      year += 1;
+      d = new Date(Date.UTC(year, m, Number(dm[1])));
+    }
+    return Number.isNaN(d.getTime()) ? null : { from: iso(d), to: iso(d) };
+  }
+
+  const months = Array.from(t.matchAll(MONTH_RE)).map((m) => monthIndex(m[1]));
+  if (months.length === 0) return null;
+  const years = (t.match(/\b20\d{2}\b/g) ?? []).map(Number);
+
+  const first = months[0];
+  const last = months.length > 1 ? months[months.length - 1] : first;
+  const inferred = first < thisMonth ? thisYear + 1 : thisYear;
+
+  const startYear =
+    years.length >= 2 ? years[0] : years.length === 1 ? (last < first ? years[0] - 1 : years[0]) : inferred;
+  const endYear = years.length ? years[years.length - 1] : last < first ? startYear + 1 : startYear;
+
+  return {
+    from: iso(new Date(Date.UTC(startYear, first, 1))),
+    to: iso(new Date(Date.UTC(endYear, last + 1, 0))),
+  };
 }

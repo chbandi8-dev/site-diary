@@ -8,6 +8,7 @@ import {
   ArrowRight, Check, CircleAlert, PencilLine, EyeOff, CalendarClock,
   TrendingUp, Layers, MessageSquare, Plus,
 } from "lucide-react";
+import { backfillProgrammes } from "@/lib/programme";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,10 @@ type Band = { title: string; note: string; tasks: Task[]; show: number };
 
 export default async function Today() {
   await requireStaff();
+
+  // Houses given a handover before due dates built themselves. A few at a
+  // time, and nothing at all once they are caught up.
+  await backfillProgrammes();
 
   const now = Date.now();
   const weekAgo = new Date(now - 7 * 86_400_000);

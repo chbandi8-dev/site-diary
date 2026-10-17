@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createHouse, NoStageTemplates } from "@/lib/create-house";
 import { z } from "zod";
+import { refreshQuietly } from "@/lib/programme";
 
 export const dynamic = "force-dynamic";
 
@@ -118,6 +119,7 @@ async function apply(action: Payload, userId: string): Promise<Outcome> {
           completedAt: action.status === "complete" ? now : null,
         },
       });
+      await refreshQuietly(action.houseId);
       return { ok: true, done: `${stage.name} marked`, houseId: action.houseId };
     }
 

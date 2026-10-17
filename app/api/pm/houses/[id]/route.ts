@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { refreshQuietly } from "@/lib/programme";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const house = await prisma.house.findUnique({
     where: { id: params.id },
-    select: { id: true, handoverFrom: true, handoverTo: true },
+    select: { id: true, handoverFrom: true, handoverTo: true, targetHandover: true },
   });
   if (!house) return NextResponse.json({ error: "House not found" }, { status: 404 });
 
@@ -93,6 +94,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       });
     }
   });
+
+  // One date, one place. Telling an owner "March to April" is a promise to the
+  // end of April, so with no separate contract date the window's far end becomes
+  // the date the programme is worked back from — and every due date follows
+  // without him opening the forecast. A promise already made is never replaced
+  // by a later change to the window, which is the owner's number, not his.
+  await refreshQuietly(
+    house.id,
+    !house.targetHandover && nextTo ? { target: nextTo } : undefined
+  );
 
   return NextResponse.json({ ok: true, handoverRecorded: moved });
 }

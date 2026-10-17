@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { refreshQuietly } from "@/lib/programme";
 
 /**
  * Putting a house on the books.
@@ -55,6 +56,8 @@ export async function createHouse(input: NewHouse): Promise<{ id: string; addres
       waitingOnEta: day(input.waitingOnDate),
       handoverFrom: day(input.handoverFrom),
       handoverTo: day(input.handoverTo),
+      // The end of the window is the promise. See the note in programme.ts.
+      targetHandover: day(input.handoverTo),
       startDate: day(input.startDate),
       stages: {
         create: templates.map((t) => ({
@@ -112,6 +115,8 @@ export async function createHouse(input: NewHouse): Promise<{ id: string; addres
       create: { houseId: house.id, ownerId: owner.id },
     });
   }
+
+  if (input.handoverTo) await refreshQuietly(house.id);
 
   return house;
 }

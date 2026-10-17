@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { refreshQuietly } from "@/lib/programme";
 
 export const dynamic = "force-dynamic";
 
@@ -80,6 +81,8 @@ export async function POST(req: NextRequest) {
     },
     select: { id: true, name: true },
   });
+
+  await refreshQuietly(houseId);
 
   return NextResponse.json(stage, { status: 201 });
 }

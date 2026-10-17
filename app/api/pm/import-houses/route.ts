@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createHouse, NoStageTemplates } from "@/lib/create-house";
+import { refreshQuietly } from "@/lib/programme";
 import { parsePastedHouses, planStages, sentence } from "@/lib/paste-import";
 import { z } from "zod";
 
@@ -80,8 +81,11 @@ export async function POST(req: NextRequest) {
       const house = await createHouse({
         address: h.address,
         suburb: h.suburb,
+        storeys: h.storeys ?? 1,
         owners: h.owners.map((o) => ({ name: o.name, phone: o.phone })),
         currentStage: h.plan[0]?.stage ?? null,
+        handoverFrom: h.handoverFrom,
+        handoverTo: h.handoverTo,
       });
 
       const now = new Date();
@@ -95,6 +99,10 @@ export async function POST(req: NextRequest) {
           },
         });
       }
+
+      // The stages have just been set, so the due dates built when the house was
+      // created are already out of date. No promised date, nothing to do.
+      await refreshQuietly(house.id);
 
       if (h.next.length > 0) {
         await prisma.house.update({

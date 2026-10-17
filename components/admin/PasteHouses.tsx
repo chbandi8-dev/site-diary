@@ -23,10 +23,25 @@ type Preview = {
   owners: { name: string; phone: string | null }[];
   status: string[];
   next: string[];
+  storeys: 1 | 2 | null;
+  handoverFrom: string | null;
+  handoverTo: string | null;
   plan: { stage: string; status: "complete" | "in_progress" | "scheduled" }[];
   unmatched: string[];
   duplicate: boolean;
 };
+
+/** "1 Mar – 30 Apr 2027", or one date when it is a single day. */
+function windowText(from: string | null, to: string): string {
+  const fmt = (iso: string, year: boolean) =>
+    new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-AU", {
+      day: "numeric",
+      month: "short",
+      ...(year ? { year: "numeric" } : {}),
+      timeZone: "UTC",
+    });
+  return !from || from === to ? fmt(to, true) : `${fmt(from, false)} – ${fmt(to, true)}`;
+}
 
 const WORD = { complete: "Done", in_progress: "Underway", scheduled: "Booked" } as const;
 
@@ -144,7 +159,10 @@ export default function PasteHouses() {
                   <p className="mt-2 text-xs leading-relaxed text-white/35">
                     Each house starts with its address. Put a mobile after a name if you have
                     it — <span className="text-white/55">Jane Smith 0412 345 678 &amp; Tom Smith 0498 765 432</span> —
-                    and the WhatsApp button works straight away.
+                    and the WhatsApp button works straight away. Add{" "}
+                    <span className="text-white/55">Storeys: double</span> and{" "}
+                    <span className="text-white/55">Handover: March to April</span> lines too:
+                    the handover is what lets the app warn you which houses are slipping.
                   </p>
                 </>
               )}
@@ -183,6 +201,19 @@ export default function PasteHouses() {
                                   ))}
                             </dd>
                           </div>
+                          {(h.storeys || h.handoverTo) && (
+                            <div>
+                              <dt className="font-mono text-[10px] uppercase tracking-[0.13em] text-white/30">House</dt>
+                              <dd className="text-white/75">
+                                {[
+                                  h.storeys === 2 ? "Double storey" : h.storeys === 1 ? "Single storey" : null,
+                                  h.handoverTo ? `Handover ${windowText(h.handoverFrom, h.handoverTo)}` : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join("  ·  ")}
+                              </dd>
+                            </div>
+                          )}
                           {h.plan.length > 0 && (
                             <div>
                               <dt className="font-mono text-[10px] uppercase tracking-[0.13em] text-white/30">Stages</dt>

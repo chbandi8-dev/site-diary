@@ -1,0 +1,13 @@
+-- Clearing due dates that were computed with a wrong rule.
+--
+-- The backward plan counted the 90-day defects liability period — which starts
+-- the day the keys change hands — as work still to do before handover, so every
+-- saved due date sat about four months earlier than it should have.
+--
+-- due_by is derived data, stored only so that "what is late across every
+-- house" is one query. Nothing is lost by clearing it: the next time the
+-- dashboard loads, houses with a promised handover are recalculated, with the
+-- corrected rule, a few at a time (see backfillProgrammes in lib/programme.ts).
+-- It does not touch estimated_end, the stage-estimate history, or the handover
+-- window anybody has been told.
+UPDATE "house_stages" SET "due_by" = NULL WHERE "due_by" IS NOT NULL;

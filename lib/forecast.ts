@@ -28,6 +28,12 @@
 export type ForecastStage = {
   id: string;
   name: string;
+  /**
+   * The owner-facing phase. "After handover" marks the stages that START at
+   * handover — the 90-day defects liability period — which run from the date
+   * the forecast is trying to find rather than towards it.
+   */
+  phase?: string | null;
   position: number;
   status: string;
   plannedDays: number | null;
@@ -217,6 +223,26 @@ function weatherAllowance(
   };
 }
 
+/** The phase whose stages begin at handover, and so cannot delay it. */
+export const AFTER_HANDOVER = "After handover";
+
+/**
+ * What stands between today and handover.
+ *
+ * Both passes used to walk the entire spine, so the last stage — a 90-day
+ * defects liability period that begins the day the keys change hands — was
+ * counted as work still to do before handover. Every window the forward pass
+ * produced was about four months too late, and the backward pass, anchoring
+ * the promised date to the end of that stage, put the handover itself four
+ * months early. The date a builder gives an owner is the keys, not the end of
+ * the warranty.
+ */
+function beforeHandover(stages: ForecastStage[]): ForecastStage[] {
+  return stages
+    .filter((s) => s.phase !== AFTER_HANDOVER)
+    .filter((s) => s.status !== "complete" && s.status !== "not_applicable");
+}
+
 export function forecast(input: {
   startDate: Date | null;
   stages: ForecastStage[];
@@ -227,9 +253,7 @@ export function forecast(input: {
   const basis: string[] = [];
 
   const ordered = [...input.stages].sort((a, b) => a.position - b.position);
-  const remaining = ordered.filter(
-    (s) => s.status !== "complete" && s.status !== "not_applicable"
-  );
+  const remaining = beforeHandover(ordered);
 
   if (remaining.length === 0) {
     return { stages: [], handoverFrom: null, handoverTo: null, basis: ["Every stage is complete."] };
@@ -364,9 +388,7 @@ export function backwardPlan(input: {
   const basis: string[] = [];
 
   const ordered = [...input.stages].sort((a, b) => a.position - b.position);
-  const remaining = ordered.filter(
-    (s) => s.status !== "complete" && s.status !== "not_applicable"
-  );
+  const remaining = beforeHandover(ordered);
 
   if (remaining.length === 0) {
     return { targets: [], floatDays: 0, basis: ["Every stage is complete."] };

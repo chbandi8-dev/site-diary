@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { forecast, backwardPlan, type ForecastStage } from "@/lib/forecast";
+import { loadProgramme as load } from "@/lib/programme";
 import { queue, ownersOf, deliverNow } from "@/lib/notify";
 import { siteUrl } from "@/lib/site-url";
 import { z } from "zod";
@@ -21,58 +21,6 @@ export const dynamic = "force-dynamic";
  * changed. That history is the answer to "you told me lock-up was March": it
  * shows what was estimated, when, and why it moved.
  */
-
-async function load(houseId: string, overrideTarget?: Date) {
-  const house = await prisma.house.findUnique({
-    where: { id: houseId },
-    select: {
-      id: true,
-      address: true,
-      startDate: true,
-      targetHandover: true,
-      handoverFrom: true,
-      handoverTo: true,
-      stages: {
-        select: {
-          id: true,
-          name: true,
-          position: true,
-          status: true,
-          plannedDays: true,
-          startedAt: true,
-          completedAt: true,
-          estimatedEnd: true,
-        },
-        orderBy: { position: "asc" },
-      },
-      _count: { select: { weatherDays: { where: { workLost: true } } } },
-    },
-  });
-  if (!house) return null;
-
-  const target = overrideTarget ?? house.targetHandover ?? null;
-
-  const result = forecast({
-    startDate: house.startDate,
-    stages: house.stages as ForecastStage[],
-    wetDaysLost: house._count.weatherDays,
-  });
-
-  // Only when a date has actually been committed to. Inventing a target so the
-  // screen has something to show would produce a slip figure measured against
-  // nothing, which is worse than no figure.
-  const plan = target
-    ? backwardPlan({
-        target,
-        stages: house.stages as ForecastStage[],
-        forecast: result.stages,
-        wetDaysLost: house._count.weatherDays,
-        workingDaysElapsed: 0,
-      })
-    : null;
-
-  return { house, result, plan };
-}
 
 export async function GET(req: NextRequest) {
   if (!(await getServerSession(authOptions))) {
