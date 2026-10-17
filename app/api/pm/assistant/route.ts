@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
         development: { select: { name: true } },
         owners: {
           where: { revokedAt: null },
-          select: { owner: { select: { name: true } } },
+          select: { owner: { select: { id: true, name: true, phone: true, email: true } } },
         },
       },
       orderBy: { address: "asc" },
@@ -267,6 +267,44 @@ export async function POST(req: NextRequest) {
           payload: { kind: "wet_day", houseId: house.id, date: action.date, note: action.note },
         });
         break;
+
+      case "owner": {
+        // Placed against the people already on the house, here, so the
+        // approval screen can say whether this fixes someone or adds them.
+        const spoken = action.name.trim().toLowerCase();
+        const people = house.owners.map((o) => o.owner);
+        const exact = people.filter((p) => p.name.trim().toLowerCase() === spoken);
+        const firstOnly = people.filter(
+          (p) => p.name.trim().toLowerCase().split(/\s+/)[0] === spoken.split(/\s+/)[0]
+        );
+        const match = exact.length === 1 ? exact[0] : firstOnly.length === 1 ? firstOnly[0] : null;
+        const what = [action.phone && "mobile", action.email && "email"].filter(Boolean).join(" and ");
+        actions.push({
+          ...common,
+          title: match ? `Save ${match.name}'s ${what}` : `Add ${action.name} as an owner`,
+          bodyField: null,
+          bodyLabel: null,
+          seenBy: "you",
+          footnote: [
+            action.phone && `Mobile ${action.phone}`,
+            action.email && action.email,
+            match?.phone && action.phone && match.phone !== action.phone
+              ? `Replaces ${match.phone}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          payload: {
+            kind: "owner",
+            houseId: house.id,
+            ownerId: match?.id ?? null,
+            name: match?.name ?? action.name,
+            phone: action.phone,
+            email: action.email,
+          },
+        });
+        break;
+      }
 
       case "defect":
         actions.push({

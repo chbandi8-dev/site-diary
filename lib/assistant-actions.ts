@@ -30,6 +30,15 @@ export type ActionPayload =
       target: string | null;
     }
   | {
+      kind: "owner";
+      houseId: string;
+      /** Null when the person is not on the house yet and will be added. */
+      ownerId: string | null;
+      name: string;
+      phone: string | null;
+      email: string | null;
+    }
+  | {
       kind: "house";
       address: string;
       suburb: string | null;

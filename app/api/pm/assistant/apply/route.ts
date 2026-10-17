@@ -77,6 +77,14 @@ const payload = z.discriminatedUnion("kind", [
     target: isoDay.nullable(),
   }),
   z.object({
+    kind: z.literal("owner"),
+    houseId,
+    ownerId: z.string().uuid().nullable(),
+    name: z.string().trim().min(1).max(120),
+    phone: z.string().trim().max(40).nullable(),
+    email: z.string().trim().email().max(200).nullable(),
+  }),
+  z.object({
     kind: z.literal("house"),
     address: z.string().trim().min(3).max(200),
     suburb: z.string().trim().max(120).nullable(),
@@ -234,6 +242,56 @@ async function apply(action: Payload, userId: string): Promise<Outcome> {
         select: { reference: true },
       });
       return { ok: true, done: `Defect ${defect.reference} added`, houseId: house.id };
+    }
+
+    case "owner": {
+      // Checked against this house, so a stale screen cannot edit somebody who
+      // is on a different build.
+      const link = action.ownerId
+        ? await prisma.houseOwner.findFirst({
+            where: { houseId: action.houseId, ownerId: action.ownerId },
+            select: { ownerId: true },
+          })
+        : null;
+      if (action.ownerId && !link) return { ok: false, error: "That person isn't on this house." };
+
+      try {
+        if (link) {
+          await prisma.owner.update({
+            where: { id: link.ownerId },
+            data: {
+              ...(action.phone ? { phone: action.phone } : {}),
+              ...(action.email ? { email: action.email.toLowerCase() } : {}),
+            },
+          });
+          return { ok: true, done: `${action.name}'s details saved`, houseId: action.houseId };
+        }
+        const house = await prisma.house.findUnique({
+          where: { id: action.houseId },
+          select: { id: true },
+        });
+        if (!house) return { ok: false, error: "That house is gone." };
+        const email = action.email ? action.email.toLowerCase() : null;
+        const owner = email
+          ? await prisma.owner.upsert({
+              where: { email },
+              update: { name: action.name, ...(action.phone ? { phone: action.phone } : {}) },
+              create: { name: action.name, email, phone: action.phone },
+            })
+          : await prisma.owner.create({ data: { name: action.name, phone: action.phone } });
+        await prisma.houseOwner.upsert({
+          where: { houseId_ownerId: { houseId: house.id, ownerId: owner.id } },
+          update: { revokedAt: null },
+          create: { houseId: house.id, ownerId: owner.id },
+        });
+        return { ok: true, done: `${action.name} added`, houseId: house.id };
+      } catch (cause) {
+        const clash = (cause as { code?: string })?.code === "P2002";
+        return {
+          ok: false,
+          error: clash ? "That email already belongs to someone else." : "That one didn't save.",
+        };
+      }
     }
 
     case "house": {

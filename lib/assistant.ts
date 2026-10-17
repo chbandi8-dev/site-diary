@@ -74,6 +74,11 @@ WHAT EACH TOOL IS FOR.
  - log_wet_day: a day lost to weather. Default the date to today unless he says
    otherwise.
  - log_defect: something that needs fixing. Location and description.
+ - set_owner_contact: an owner's mobile number or email for a house that is
+   already on the list — "Arny's number is 0419 696 104", "add Priyanka's
+   mobile". Give the person's name as he said it and copy the number or email
+   exactly. Never invent or complete a number. Use this, not a note, for
+   contact details.
  - record_new_house: a house he is adding to the books. Takes no house number.
 
 DICTATION ERRORS. This arrives from phone dictation, which mangles Australian
@@ -95,6 +100,7 @@ export type Action =
   | { kind: "next_week"; house: number; body: string }
   | { kind: "wet_day"; house: number; date: string; note: string | null }
   | { kind: "defect"; house: number; location: string | null; description: string; target: string | null }
+  | { kind: "owner"; house: number; name: string; phone: string | null; email: string | null }
   | {
       kind: "house";
       address: string;
@@ -214,6 +220,21 @@ const TOOLS: Anthropic.Tool[] = [
         target: { type: "string", description: "YYYY-MM-DD, when it should be fixed by." },
       },
       required: ["house", "description"],
+    },
+  },
+  {
+    name: "set_owner_contact",
+    description:
+      "Save an owner's mobile number or email on one house. Adds the person if they are not on it yet.",
+    input_schema: {
+      type: "object",
+      properties: {
+        house: HOUSE_REF,
+        name: { type: "string", description: "The owner's name as he said it." },
+        phone: { type: "string", description: "Exactly as spoken, digits and any + prefix." },
+        email: { type: "string" },
+      },
+      required: ["house", "name"],
     },
   },
   {
@@ -418,6 +439,18 @@ export async function readActionsFromSpeech(opts: {
           description,
           target: cleanDate(raw.target),
         });
+        break;
+      }
+
+      case "set_owner_contact": {
+        const name = cleanText(raw.name, 120);
+        const phone = cleanText(raw.phone, 40);
+        const email = cleanText(raw.email, 200);
+        const goodEmail = email && email.includes("@") ? email.toLowerCase() : null;
+        // A phone with no digits in it is a mishearing, not a number.
+        const goodPhone = phone && phone.replace(/\D/g, "").length >= 8 ? phone : null;
+        if (!placed || !name || (!goodPhone && !goodEmail)) break;
+        actions.push({ kind: "owner", house, name, phone: goodPhone, email: goodEmail });
         break;
       }
 
