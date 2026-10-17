@@ -1,4 +1,6 @@
 import type { loadToday } from "./today";
+import { computeExpected } from "./expected";
+import type { ForecastStage } from "./forecast";
 
 /**
  * What needs him today — one definition, read by two things.
@@ -26,6 +28,8 @@ export type Task = {
   kind: TaskKind;
   /** For a stage coming up: whole days until it is due. Negative once late. */
   days?: number;
+  /** Where the house will really land, for him only: "Promised 31 Dec · expected 14–28 Feb · about 9 weeks late". */
+  expected?: string;
 };
 
 type Today = Awaited<ReturnType<typeof loadToday>>;
@@ -155,9 +159,27 @@ export function buildTasks(
       days,
     });
   }
+  const byId = new Map(houses.map((h) => [h.id, h]));
   lateMore.forEach((more, houseId) => {
     const task = tasks[lateAt.get(houseId)!];
     task.detail = `Behind the date you promised — and ${more} later stage${more === 1 ? "" : "s"} behind it too`;
+  });
+  // Where it will really land, for him alone. Said only on a house that is
+  // already behind: a house on time needs no second date quoted at him.
+  lateAt.forEach((index, houseId) => {
+    const h = byId.get(houseId);
+    if (!h) return;
+    const e = computeExpected({
+      startDate: h.startDate,
+      promised: h.targetHandover ?? h.handoverTo,
+      wetDaysLost: h._count.weatherDays,
+      stages: h.stages as unknown as ForecastStage[],
+      today: new Date(now),
+    });
+    if (e && e.state !== "on_track") {
+      tasks[index].expected = e.summary;
+      tasks[index].detail += `. ${e.summary}`;
+    }
   });
 
   tasks.sort((a, b) => a.urgency - b.urgency || a.address.localeCompare(b.address));

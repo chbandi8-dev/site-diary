@@ -12,7 +12,11 @@ const house = (over: Record<string, unknown> = {}) => ({
   decisions: [],
   owners: [],
   updates: [{ occurredAt: new Date(NOW - DAY) }],
-  _count: { updates: 0, owners: 1 },
+  startDate: null,
+  targetHandover: null,
+  handoverTo: null,
+  stages: [],
+  _count: { updates: 0, owners: 1, weatherDays: 0 },
   ...over,
 });
 
@@ -83,4 +87,23 @@ test("an overdue decision counts, a future one does not", () => {
   assert.equal(overdue.some((t) => t.kind === "decision"), true);
   const future = build([house({ decisions: [{ question: "Tapware?", dueDate: new Date(NOW + 5 * DAY) }] })]);
   assert.equal(future.some((t) => t.kind === "decision"), false);
+});
+
+test("a late house says where it will really land; a house on time does not", () => {
+  const stages = [
+    { id: "s1", name: "Frame", phase: "Structure", position: 1, status: "in_progress", plannedDays: 20, startedAt: new Date(NOW - 5 * DAY), completedAt: null, estimatedEnd: null },
+    { id: "s2", name: "Handover & keys", phase: "Handover", position: 2, status: "not_started", plannedDays: 5, startedAt: null, completedAt: null, estimatedEnd: null },
+  ];
+  const late = build(
+    [house({ stages, targetHandover: new Date(NOW + 3 * DAY) })],
+    [stage("h1", "Frame", -4)]
+  ).find((t) => t.kind === "due")!;
+  assert.match(late.expected ?? "", /^Promised .* · expected .* · .*late$/);
+  assert.ok(late.detail.includes(late.expected!));
+
+  const fine = build(
+    [house({ stages, targetHandover: new Date(NOW + 400 * DAY) })],
+    [stage("h1", "Frame", -4)]
+  ).find((t) => t.kind === "due")!;
+  assert.equal(fine.expected, undefined);
 });

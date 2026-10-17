@@ -33,11 +33,25 @@ export async function loadToday() {
         waitingOn: true,
         nextWeek: true,
         nextWeekSetAt: true,
+        startDate: true,
+        targetHandover: true,
+        handoverTo: true,
         development: { select: { id: true, name: true } },
         // Every stage, not just what's underway: the phase rollup and the slip
         // both need the whole spine, and one pass over it answers both.
         stages: {
-          select: { name: true, phase: true, position: true, status: true, dueBy: true },
+          select: {
+            id: true,
+            name: true,
+            phase: true,
+            position: true,
+            status: true,
+            dueBy: true,
+            plannedDays: true,
+            startedAt: true,
+            completedAt: true,
+            estimatedEnd: true,
+          },
           orderBy: { position: "asc" },
         },
         updates: {
@@ -70,6 +84,7 @@ export async function loadToday() {
           select: {
             updates: { where: { publishedAt: null, deletedAt: null } },
             owners: { where: { revokedAt: null } },
+            weatherDays: { where: { workLost: true } },
           },
         },
       },

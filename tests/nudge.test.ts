@@ -65,3 +65,11 @@ test("mentions the rest of the week without listing it", () => {
   assert.match(msg.body, /Also this week: 1 to close out\./);
   assert.doesNotMatch(msg.body, /never sent/);
 });
+
+test("a late house's expected window rides under its line", () => {
+  const msg = composeNudge(
+    [{ houseId: "h1", address: "1 Test Street", urgency: 2, label: "Frame is 4 days past due", detail: "x", kind: "due", days: -4, expected: "Promised 31 Dec · expected 14–28 Feb · about 9 weeks late" }],
+    { origin: "https://example.test", dateLabel: "Monday" }
+  )!;
+  assert.match(msg.body, /past due — 1 Test Street\n   Promised 31 Dec · expected 14–28 Feb/);
+});

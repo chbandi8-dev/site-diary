@@ -35,7 +35,8 @@ export function composeNudge(
     const lines = items.slice(0, CAP).map((t) => {
       const head = `• ${t.label} — ${t.address}`;
       // An owner's own words are worth reading; a stage's explanation is not.
-      return t.kind === "report" ? `${head}\n   "${t.detail}"` : head;
+      if (t.kind === "report") return `${head}\n   "${t.detail}"`;
+      return t.expected ? `${head}\n   ${t.expected}` : head;
     });
     if (items.length > CAP) lines.push(`+ ${items.length - CAP} more in the app`);
     return lines.join("\n");

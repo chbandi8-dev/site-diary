@@ -1,3 +1,5 @@
+import { computeExpected } from "@/lib/expected";
+import type { ForecastStage } from "@/lib/forecast";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
@@ -48,18 +50,26 @@ export default async function HouseCapture({ params }: { params: { id: string } 
             photos: { where: { deletedAt: null } },
             internalNotes: true,
             documents: true,
+            weatherDays: { where: { workLost: true } },
           },
         },
         waitingOn: true,
         waitingOnEta: true,
         handoverFrom: true,
         handoverTo: true,
+        startDate: true,
+        targetHandover: true,
         stages: {
           select: {
             id: true,
             name: true,
             phase: true,
             status: true,
+            position: true,
+            plannedDays: true,
+            startedAt: true,
+            completedAt: true,
+            estimatedEnd: true,
             _count: { select: { updates: true, photos: true } },
           },
           orderBy: { position: "asc" },
@@ -197,6 +207,18 @@ export default async function HouseCapture({ params }: { params: { id: string } 
   const openDefects = house.defects.filter((d) => d.status !== "resolved").length;
   const drafts = house.updates.filter((u) => !u.publishedAt).length;
 
+  // For him only: nothing on the owner or builder pages reads this. Worked out
+  // on the way in from rows already loaded, so it costs no query.
+  const expected =
+    house.status === "handed_over"
+      ? null
+      : computeExpected({
+          startDate: house.startDate,
+          promised: house.targetHandover ?? house.handoverTo,
+          wetDaysLost: house._count.weatherDays,
+          stages: house.stages as unknown as ForecastStage[],
+        });
+
   return (
     <div className="mx-auto max-w-3xl">
       <Link href="/admin/houses" className="text-sm text-white/45 hover:text-white">
@@ -222,6 +244,19 @@ export default async function HouseCapture({ params }: { params: { id: string } 
           {owners.map((o) => o.owner.name).join(" & ") || "No owners linked"}
           {house.suburb ? ` · ${house.suburb}` : ""}
         </p>
+        {expected && (
+          <p
+            className={`mt-1.5 text-sm leading-snug ${
+              expected.state === "late"
+                ? "text-red-300"
+                : expected.state === "tight"
+                  ? "text-amber-300"
+                  : "text-white/60"
+            }`}
+          >
+            {expected.summary}
+          </p>
+        )}
         {underway.length > 0 && (
           <p className="mt-1.5 text-sm leading-snug text-gold/85">
             {underway.map((s) => s.name).join(" · ")}
