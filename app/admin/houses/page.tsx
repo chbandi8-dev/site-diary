@@ -5,6 +5,7 @@ import AddHouse from "@/components/admin/AddHouse";
 import HouseList from "@/components/admin/HouseList";
 import DemoHouses, { ExportEverything } from "@/components/admin/DemoHouses";
 import BoardShare from "@/components/admin/BoardShare";
+import PasteHouses from "@/components/admin/PasteHouses";
 import { currentPhase, hasProgramme, overdueStages, type StageFacts } from "@/lib/phases";
 import { X } from "lucide-react";
 
@@ -168,6 +169,7 @@ export default async function HousesPage({
         <div className="flex flex-col items-end gap-2">
           <AddHouse stageNames={stageNames} />
           <div className="flex items-center gap-4">
+            <PasteHouses />
             <Link
               href="/admin/developments"
               className="text-sm text-white/45 underline underline-offset-4 hover:text-white"
