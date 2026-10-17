@@ -3,7 +3,6 @@ import HouseLink from "@/components/admin/HouseLink";
 import RecentUpdates from "@/components/admin/RecentUpdates";
 import InternalNotes from "@/components/admin/InternalNotes";
 import DecisionsPanel from "@/components/admin/DecisionsPanel";
-import DocumentsPanel from "@/components/admin/DocumentsPanel";
 import WetDays from "@/components/admin/WetDays";
 import DefectsPanel from "@/components/admin/DefectsPanel";
 import ForecastPanel from "@/components/admin/ForecastPanel";
@@ -190,41 +189,21 @@ export async function SiteTab({
 }
 
 export async function NotesTab({ houseId }: { houseId: string }) {
-  const [internalNotes, documents] = await Promise.all([
-    prisma.internalNote.findMany({
-      where: { houseId },
-      select: { id: true, body: true, createdAt: true, author: { select: { name: true } } },
-      orderBy: { createdAt: "desc" },
-      take: 12,
-    }),
-    prisma.document.findMany({
-      where: { houseId, status: "ready" },
-      select: { id: true, title: true, category: true, bytes: true, uploadedAt: true },
-      orderBy: [{ category: "asc" }, { uploadedAt: "desc" }],
-      take: 25,
-    }),
-  ]);
-  const house = { id: houseId, internalNotes, documents };
+  const internalNotes = await prisma.internalNote.findMany({
+    where: { houseId },
+    select: { id: true, body: true, createdAt: true, author: { select: { name: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 12,
+  });
   return (
     <div>
       <InternalNotes
-        houseId={house.id}
-        notes={house.internalNotes.map((n) => ({
+        houseId={houseId}
+        notes={internalNotes.map((n) => ({
           id: n.id,
           body: n.body,
           createdAt: n.createdAt.toISOString(),
           author: n.author?.name ?? "",
-        }))}
-      />
-
-      <DocumentsPanel
-        houseId={house.id}
-        documents={house.documents.map((d) => ({
-          id: d.id,
-          title: d.title,
-          category: d.category,
-          bytes: d.bytes,
-          uploadedAt: d.uploadedAt.toISOString(),
         }))}
       />
     </div>

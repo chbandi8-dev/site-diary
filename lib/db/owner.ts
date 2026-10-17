@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import { signDownload } from "@/lib/r2";
 
 /**
  * Every read on the homeowner side.
@@ -366,38 +365,6 @@ export async function decideVariation(
 // ---------------------------------------------------------------------------
 // Documents and weather.
 // ---------------------------------------------------------------------------
-
-/**
- * Their paperwork. Signed URLs are minted per render, same as photos — the
- * bucket is private and a plan set is not something to leave on a public URL.
- */
-export async function getDocuments(houseId: string) {
-  const docs = await prisma.document.findMany({
-    where: { houseId, status: "ready" },
-    select: {
-      id: true,
-      title: true,
-      category: true,
-      key: true,
-      bytes: true,
-      mimeType: true,
-      uploadedAt: true,
-    },
-    orderBy: [{ category: "asc" }, { uploadedAt: "desc" }],
-  });
-
-  return Promise.all(
-    docs.map(async (d) => ({
-      id: d.id,
-      title: d.title,
-      category: d.category,
-      bytes: d.bytes,
-      mimeType: d.mimeType,
-      uploadedAt: d.uploadedAt,
-      url: await signDownload(d.key),
-    }))
-  );
-}
 
 /**
  * Days lost to weather.

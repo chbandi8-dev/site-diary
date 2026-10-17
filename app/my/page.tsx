@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { currentHouse, currentViewer, recordVisit } from "@/lib/owner/session";
 import {
   getHouse, getStages, getTimeline, getReports, getBuilder, getDecisions,
-  getVariations, getDocuments, getWetDays, getDefects,
+  getVariations, getWetDays, getDefects,
   activeStages, nextStage,
 } from "@/lib/db/owner";
 import HouseHeader from "@/components/owner/HouseHeader";
@@ -11,7 +11,6 @@ import RegisterCard from "@/components/owner/RegisterCard";
 import Decisions from "@/components/owner/Decisions";
 import ReportPanel from "@/components/owner/ReportPanel";
 import Variations from "@/components/owner/Variations";
-import Documents from "@/components/owner/Documents";
 import WetDays from "@/components/owner/WetDays";
 import Defects from "@/components/owner/Defects";
 
@@ -33,7 +32,7 @@ export default async function MyBuild() {
     viewer ? { houseId: access.houseId, ownerId: viewer.id } : undefined
   );
 
-  const [stages, updates, reports, builder, decisions, variations, documents, wetDays, defects] =
+  const [stages, updates, reports, builder, decisions, variations, wetDays, defects] =
     await Promise.all([
       getStages(access.houseId),
       getTimeline(access.houseId),
@@ -41,7 +40,6 @@ export default async function MyBuild() {
       getBuilder(),
       getDecisions(access.houseId),
       getVariations(access.houseId),
-      getDocuments(access.houseId),
       getWetDays(access.houseId),
       getDefects(access.houseId),
     ]);
@@ -123,8 +121,6 @@ export default async function MyBuild() {
       {/* Below the timeline: these answer questions rather than report news,
           and an owner opening the link wants today's update first. */}
       <WetDays days={wetDays} />
-
-      <Documents documents={documents} />
 
       <ReportPanel
         viewer={viewer}
