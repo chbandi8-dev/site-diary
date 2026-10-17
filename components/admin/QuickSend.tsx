@@ -108,14 +108,58 @@ export default function QuickSend({
   /**
    * Owners hear from him on WhatsApp. With exactly one owner and a mobile on
    * file the chat opens the moment the update is recorded, with the words
-   * already in it; with several he picks who from the row below.
+   * already in it. With several, each gets their own button — one tap records
+   * the update once and opens that person's chat, and the others stay in the
+   * row below for the next tap.
    */
   const soleOwner = owners.length === 1 && toWhatsAppNumber(owners[0].phone) ? owners[0] : null;
-  function toWhatsApp(message: string | null | undefined) {
-    if (message && soleOwner) void sendOnWhatsApp({ message, phone: soleOwner.phone });
+  const several = owners.length > 1;
+  type Who = (typeof owners)[number] | "all";
+  function toWhatsApp(message: string | null | undefined, who?: Who) {
+    if (!message) return;
+    if (who === "all") {
+      void sendOnWhatsApp({ message, preferShareSheet: true });
+      return;
+    }
+    const target = who ?? soleOwner;
+    if (target) {
+      void sendOnWhatsApp({
+        message,
+        phone: target.phone,
+        preferShareSheet: !toWhatsAppNumber(target.phone),
+      });
+    }
   }
 
-  async function send(t: Template, slots: Record<string, string>) {
+  /** One button per owner, for when there is more than one to tell. */
+  function whoButtons(go: (who: Who) => void, disabled: boolean) {
+    return (
+      <div className="flex flex-col gap-2">
+        {owners.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            disabled={disabled}
+            onClick={() => go(o)}
+            className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-lg bg-gold px-6 font-medium text-dark transition-opacity disabled:opacity-40"
+          >
+            <MessageCircle size={16} aria-hidden="true" />
+            {sending ? "Sending…" : `Send to ${o.name.split(" ")[0]} on WhatsApp`}
+          </button>
+        ))}
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => go("all")}
+          className="min-h-[46px] w-full rounded-lg border border-white/15 px-6 text-sm text-white/70 hover:border-white/35 disabled:opacity-40"
+        >
+          Send to everyone — pick in WhatsApp
+        </button>
+      </div>
+    );
+  }
+
+  async function send(t: Template, slots: Record<string, string>, who?: Who) {
     setSending(true);
     try {
       const outcome = edited
@@ -155,7 +199,7 @@ export default function QuickSend({
       setResult({ ok: true, text: data.message });
       const sentText = edited ?? data.body ?? null;
       setLastSent(sentText);
-      if (data.published) toWhatsApp(sentText);
+      if (data.published) toWhatsApp(sentText, who);
       // Mis-taps on site are not rare, and there is no taking an email back
       // once the send job has run. The window is short but it covers the
       // "wrong house" moment, which is the one that actually happens.
@@ -170,7 +214,7 @@ export default function QuickSend({
   }
 
   /** Sends an update he wrote or dictated, rather than one from a template. */
-  async function sendDraft(hold: boolean) {
+  async function sendDraft(hold: boolean, who?: Who) {
     if (!draft?.trim()) return;
     setSending(true);
     setResult(null);
@@ -198,7 +242,7 @@ export default function QuickSend({
 
       setResult({ ok: true, text: data.message });
       setLastSent(draft);
-      if (data.published) toWhatsApp(draft);
+      if (data.published) toWhatsApp(draft, who);
       if (data.published) setUndo({ id: data.id, until: Date.now() + 12_000 });
       setDraft(null);
       router.refresh();
@@ -395,6 +439,11 @@ export default function QuickSend({
           )}
 
           <div className="mt-4 flex flex-wrap gap-2">
+            {several && draftKind !== "delay" ? (
+              <div className="w-full">
+                {whoButtons((who) => sendDraft(false, who), sending || !draft.trim())}
+              </div>
+            ) : (
             <button
               type="button"
               onClick={() => sendDraft(false)}
@@ -409,6 +458,7 @@ export default function QuickSend({
                     ? `Send to ${soleOwner.name.split(" ")[0]} on WhatsApp`
                     : "Send to owners"}
             </button>
+            )}
             {draftKind !== "delay" && (
               <button
                 type="button"
@@ -522,6 +572,12 @@ export default function QuickSend({
               </fieldset>
             ))}
 
+            {several && open.sendsImmediately ? (
+              whoButtons(
+                (who) => send(open, choices, who),
+                sending || open.slots.some((s) => !choices[s.name])
+              )
+            ) : (
             <button
               type="button"
               disabled={sending || open.slots.some((s) => !choices[s.name])}
@@ -536,6 +592,7 @@ export default function QuickSend({
                     ? `Send to ${soleOwner.name.split(" ")[0]} on WhatsApp`
                     : "Send to owners"}
             </button>
+            )}
           </div>
         </div>
       )}
