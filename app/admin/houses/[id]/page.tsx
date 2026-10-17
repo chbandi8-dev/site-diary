@@ -9,7 +9,7 @@ import QuickSend from "@/components/admin/QuickSend";
 import StageBoard from "@/components/admin/StageBoard";
 import HouseStatus from "@/components/admin/HouseStatus";
 import HouseTabs from "@/components/admin/HouseTabs";
-import { OwnersTab, MoneyTab, SiteTab, NotesTab, TabLoading } from "./tabs";
+import { OwnersTab, SiteTab, NotesTab, TabLoading } from "./tabs";
 import HouseSettings from "@/components/admin/HouseSettings";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +22,7 @@ export default async function HouseCapture({ params }: { params: { id: string } 
   // instead of after everything he might look at has been fetched.
   // The badge counts need only the route id, so they travel with the house
   // rather than after it.
-  const [house, openDecisions, drafts, openVariations, openDefects] = await Promise.all([
+  const [house, openDecisions, drafts, openDefects] = await Promise.all([
     prisma.house.findUnique({
     relationLoadStrategy: "join",
     where: { id: params.id },
@@ -77,7 +77,6 @@ export default async function HouseCapture({ params }: { params: { id: string } 
   }),
     prisma.decision.count({ where: { houseId: params.id, status: "open" } }),
     prisma.update.count({ where: { houseId: params.id, publishedAt: null, deletedAt: null } }),
-    prisma.variation.count({ where: { houseId: params.id, status: "sent" } }),
     prisma.defect.count({ where: { houseId: params.id, status: { not: "resolved" } } }),
   ]);
 
@@ -167,7 +166,6 @@ export default async function HouseCapture({ params }: { params: { id: string } 
         tabs={[
           { id: "today", label: "Today" },
           { id: "owners", label: "Owners", badge: openDecisions + drafts },
-          { id: "money", label: "Money", badge: openVariations },
           { id: "site", label: "Site", badge: openDefects },
           { id: "private", label: "Notes" },
         ]}
@@ -204,10 +202,6 @@ export default async function HouseCapture({ params }: { params: { id: string } 
 
         <Suspense fallback={<TabLoading />}>
           <OwnersTab houseId={house.id} address={house.address} owners={house.owners} />
-        </Suspense>
-
-        <Suspense fallback={<TabLoading />}>
-          <MoneyTab houseId={house.id} />
         </Suspense>
 
         <Suspense fallback={<TabLoading />}>

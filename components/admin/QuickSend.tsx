@@ -69,6 +69,11 @@ export default function QuickSend({
    * except he has to type it.
    */
   const [lastSent, setLastSent] = useState<string | null>(null);
+  /**
+   * His own wording of the message in the sheet, once he has changed it. Null
+   * means the template's words go out untouched.
+   */
+  const [edited, setEdited] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const [draftKind, setDraftKind] = useState<"progress" | "delay" | "milestone">("progress");
   /**
@@ -124,6 +129,7 @@ export default function QuickSend({
   function start(t: Template) {
     setResult(null);
     setChoices({});
+    setEdited(null);
     // Always open the sheet, even with nothing to fill in. He is sending prose
     // in his own voice to a client; he should see it first. Eight of these
     // otherwise sent irreversibly on one touch of a 64px button in a grid where
@@ -139,20 +145,43 @@ export default function QuickSend({
     );
   }
 
+  /**
+   * Owners hear from him on WhatsApp. With exactly one owner and a mobile on
+   * file the chat opens the moment the update is recorded, with the words
+   * already in it; with several he picks who from the row below.
+   */
+  const soleOwner = owners.length === 1 && toWhatsAppNumber(owners[0].phone) ? owners[0] : null;
+  function toWhatsApp(message: string | null | undefined) {
+    if (message && soleOwner) void sendOnWhatsApp({ message, phone: soleOwner.phone });
+  }
+
   async function send(t: Template, slots: Record<string, string>) {
     setSending(true);
     try {
-      const outcome = await outboxSend(
-        "/api/pm/quick-send",
-        {
-          houseId,
-          templateKey: t.key,
-          slots,
-          photoIds: photos.filter((p) => p.state === "ready").map((p) => p.id),
-          stageId: stageId || undefined,
-        },
-        t.label
-      );
+      const outcome = edited
+        ? await outboxSend(
+            "/api/pm/updates",
+            {
+              houseId,
+              body: edited,
+              kind: t.kind,
+              photoIds: photos.filter((p) => p.state === "ready").map((p) => p.id),
+              stageId: stageId || undefined,
+              hold: !t.sendsImmediately,
+            },
+            t.label
+          )
+        : await outboxSend(
+            "/api/pm/quick-send",
+            {
+              houseId,
+              templateKey: t.key,
+              slots,
+              photoIds: photos.filter((p) => p.state === "ready").map((p) => p.id),
+              stageId: stageId || undefined,
+            },
+            t.label
+          );
 
       if (!outcome.ok) {
         // Queued is not failed. The banner above says it is waiting, and the
@@ -167,7 +196,9 @@ export default function QuickSend({
       const data = outcome.data as { message: string; body?: string; published?: boolean; id: string };
 
       setResult({ ok: true, text: data.message });
-      setLastSent(data.body ?? null);
+      const sentText = edited ?? data.body ?? null;
+      setLastSent(sentText);
+      if (data.published) toWhatsApp(sentText);
       // Mis-taps on site are not rare, and there is no taking an email back
       // once the send job has run. The window is short but it covers the
       // "wrong house" moment, which is the one that actually happens.
@@ -213,6 +244,7 @@ export default function QuickSend({
 
       setResult({ ok: true, text: data.message });
       setLastSent(draft);
+      if (data.published) toWhatsApp(draft);
       if (data.published) setUndo({ id: data.id, until: Date.now() + 12_000 });
       setDraft(null);
       setPhotos([]);
@@ -264,7 +296,7 @@ export default function QuickSend({
       {lastSent && owners.length > 0 && (
         <div className="mb-5 flex flex-wrap items-center gap-2">
           <span className="font-mono text-[10px] uppercase tracking-[0.13em] text-white/35">
-            Also on WhatsApp
+            Send on WhatsApp
           </span>
           {owners.map((o) => {
             const hasNumber = Boolean(toWhatsAppNumber(o.phone));
@@ -421,7 +453,9 @@ export default function QuickSend({
                 ? "Sending…"
                 : draftKind === "delay"
                   ? "Save as draft"
-                  : "Send to owners"}
+                  : soleOwner
+                    ? `Send to ${soleOwner.name.split(" ")[0]} on WhatsApp`
+                    : "Send to owners"}
             </button>
             {draftKind !== "delay" && (
               <button
@@ -562,11 +596,25 @@ export default function QuickSend({
               </button>
             </div>
 
+            {/* The words as they will go out. Editable once the blanks below are
+                chosen — before then there are still gaps in it. */}
             <div className="mb-5 rounded-lg bg-dark px-4 py-3.5">
-              <p className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.13em] text-white/35">
-                What they&apos;ll read
-              </p>
-              <p className="text-sm leading-relaxed text-white/85">{preview(open, choices)}</p>
+              <label
+                htmlFor="qs-text"
+                className="mb-1.5 block font-mono text-[10px] uppercase tracking-[0.13em] text-white/35"
+              >
+                {open.slots.every((s) => choices[s.name])
+                  ? "What they'll read — edit anything"
+                  : "What they'll read — pick the details first"}
+              </label>
+              <textarea
+                id="qs-text"
+                rows={5}
+                readOnly={!open.slots.every((s) => choices[s.name])}
+                value={edited ?? preview(open, choices)}
+                onChange={(e) => setEdited(e.target.value)}
+                className="w-full resize-y rounded-lg border border-transparent bg-transparent text-sm leading-relaxed text-white/85 focus:border-gold focus:outline-none"
+              />
             </div>
 
             {open.slots.map((slot) => (
@@ -581,7 +629,11 @@ export default function QuickSend({
                       <button
                         key={option}
                         type="button"
-                        onClick={() => setChoices((c) => ({ ...c, [slot.name]: option }))}
+                        onClick={() => {
+                          setChoices((c) => ({ ...c, [slot.name]: option }));
+                          // The blanks changed, so the words are rebuilt from them.
+                          setEdited(null);
+                        }}
                         className={
                           "min-h-[44px] rounded-full border px-4 py-2 text-sm transition-colors " +
                           (selected
@@ -603,7 +655,13 @@ export default function QuickSend({
               onClick={() => send(open, choices)}
               className="min-h-[52px] w-full rounded-lg bg-gold px-6 font-medium text-dark transition-opacity disabled:opacity-40"
             >
-              {sending ? "Sending…" : open.sendsImmediately ? "Send to owners" : "Save as draft"}
+              {sending
+                ? "Sending…"
+                : !open.sendsImmediately
+                  ? "Save as draft"
+                  : soleOwner
+                    ? `Send to ${soleOwner.name.split(" ")[0]} on WhatsApp`
+                    : "Send to owners"}
             </button>
           </div>
         </div>

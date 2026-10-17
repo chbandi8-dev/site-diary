@@ -4,7 +4,6 @@ import HouseLink from "@/components/admin/HouseLink";
 import RecentUpdates from "@/components/admin/RecentUpdates";
 import InternalNotes from "@/components/admin/InternalNotes";
 import DecisionsPanel from "@/components/admin/DecisionsPanel";
-import VariationsPanel from "@/components/admin/VariationsPanel";
 import DocumentsPanel from "@/components/admin/DocumentsPanel";
 import WetDays from "@/components/admin/WetDays";
 import DefectsPanel from "@/components/admin/DefectsPanel";
@@ -12,7 +11,7 @@ import ForecastPanel from "@/components/admin/ForecastPanel";
 import MessageTrade from "@/components/admin/MessageTrade";
 
 /**
- * The four tabs he does not land on.
+ * The tabs he does not land on.
  *
  * The first tab is what he opens a house to see, and it needs only the house,
  * its stages and its owners. Everything here used to be read in the same query
@@ -91,58 +90,6 @@ export async function OwnersTab({ houseId, address, owners }: { houseId: string;
                     body: u.body,
                     occurredAt: u.occurredAt.toISOString(),
                     published: Boolean(u.publishedAt),
-                  }))}
-                />
-        </div>
-  );
-}
-
-export async function MoneyTab({ houseId }: { houseId: string }) {
-  const [variations, documents] = await Promise.all([
-    prisma.variation.findMany({
-      where: { houseId },
-      select: {
-        id: true, reference: true, description: true, amountCents: true, status: true,
-        sentAt: true, approvedAt: true, declinedAt: true, declineReason: true,
-        approvedBy: { select: { name: true } },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 15,
-    }),
-    prisma.document.findMany({
-      where: { houseId, status: "ready" },
-      select: { id: true, title: true, category: true, bytes: true, uploadedAt: true },
-      orderBy: [{ category: "asc" }, { uploadedAt: "desc" }],
-      take: 25,
-    }),
-  ]);
-  const house = { id: houseId, variations, documents };
-  return (
-    <div>
-          <VariationsPanel
-                  houseId={house.id}
-                  variations={house.variations.map((v) => ({
-                    id: v.id,
-                    reference: v.reference,
-                    description: v.description,
-                    amountCents: v.amountCents,
-                    status: v.status,
-                    sentAt: v.sentAt?.toISOString() ?? null,
-                    approvedAt: v.approvedAt?.toISOString() ?? null,
-                    declinedAt: v.declinedAt?.toISOString() ?? null,
-                    declineReason: v.declineReason,
-                    decidedBy: v.approvedBy?.name ?? null,
-                  }))}
-                />
-
-          <DocumentsPanel
-                  houseId={house.id}
-                  documents={house.documents.map((d) => ({
-                    id: d.id,
-                    title: d.title,
-                    category: d.category,
-                    bytes: d.bytes,
-                    uploadedAt: d.uploadedAt.toISOString(),
                   }))}
                 />
         </div>
@@ -262,25 +209,44 @@ export async function SiteTab({
 }
 
 export async function NotesTab({ houseId }: { houseId: string }) {
-  const internalNotes = await prisma.internalNote.findMany({
-    where: { houseId },
-    select: { id: true, body: true, createdAt: true, author: { select: { name: true } } },
-    orderBy: { createdAt: "desc" },
-    take: 12,
-  });
-  const house = { id: houseId, internalNotes };
+  const [internalNotes, documents] = await Promise.all([
+    prisma.internalNote.findMany({
+      where: { houseId },
+      select: { id: true, body: true, createdAt: true, author: { select: { name: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 12,
+    }),
+    prisma.document.findMany({
+      where: { houseId, status: "ready" },
+      select: { id: true, title: true, category: true, bytes: true, uploadedAt: true },
+      orderBy: [{ category: "asc" }, { uploadedAt: "desc" }],
+      take: 25,
+    }),
+  ]);
+  const house = { id: houseId, internalNotes, documents };
   return (
     <div>
-          <InternalNotes
-                  houseId={house.id}
-                  notes={house.internalNotes.map((n) => ({
-                    id: n.id,
-                    body: n.body,
-                    createdAt: n.createdAt.toISOString(),
-                    author: n.author?.name ?? "",
-                  }))}
-                />
-        </div>
+      <InternalNotes
+        houseId={house.id}
+        notes={house.internalNotes.map((n) => ({
+          id: n.id,
+          body: n.body,
+          createdAt: n.createdAt.toISOString(),
+          author: n.author?.name ?? "",
+        }))}
+      />
+
+      <DocumentsPanel
+        houseId={house.id}
+        documents={house.documents.map((d) => ({
+          id: d.id,
+          title: d.title,
+          category: d.category,
+          bytes: d.bytes,
+          uploadedAt: d.uploadedAt.toISOString(),
+        }))}
+      />
+    </div>
   );
 }
 
