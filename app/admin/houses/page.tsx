@@ -254,6 +254,12 @@ export default async function HousesPage({
       <DemoHouses present={demoPresent} />
 
       <ExportEverything />
+
+      <p className="mt-6 text-center">
+        <Link href="/admin/health" className="text-xs text-white/30 underline underline-offset-4 hover:text-white/60">
+          Speed check
+        </Link>
+      </p>
     </div>
   );
 }
