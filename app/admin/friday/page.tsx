@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth-guard";
 import FridayPrep from "@/components/admin/FridayPrep";
+import { composeDigest } from "@/lib/digest-text";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ export default async function FridayPrepPage() {
       address: true,
       suburb: true,
       waitingOn: true,
+      waitingOnEta: true,
       nextWeek: true,
       nextWeekSetAt: true,
       stages: {
@@ -39,7 +41,16 @@ export default async function FridayPrepPage() {
         select: { id: true, body: true, occurredAt: true },
         orderBy: { occurredAt: "asc" },
       },
-      owners: { where: { revokedAt: null }, select: { owner: { select: { email: true } } } },
+      variations: { where: { status: "sent" }, select: { reference: true } },
+      weatherDays: {
+        where: { workLost: true, date: { gte: since } },
+        select: { date: true },
+        orderBy: { date: "asc" },
+      },
+      owners: {
+        where: { revokedAt: null },
+        select: { owner: { select: { id: true, name: true, email: true, phone: true } } },
+      },
     },
     orderBy: { address: "asc" },
   });
@@ -60,6 +71,9 @@ export default async function FridayPrepPage() {
     })),
     nextWeek: fresh(h.nextWeekSetAt) ? h.nextWeek : null,
     recipients: h.owners.filter((o) => o.owner.email).length,
+    owners: h.owners.map((o) => ({ id: o.owner.id, name: o.owner.name, phone: o.owner.phone })),
+    // The same words the Friday email carries, ready to hand to WhatsApp.
+    message: composeDigest(h, new Date(Date.now() - 10 * 86_400_000), "whatsapp"),
   }));
 
   const done = rows.filter((r) => r.nextWeek).length;
@@ -72,7 +86,8 @@ export default async function FridayPrepPage() {
           {done} of {rows.length} houses have next week written.
         </p>
         <p className="mt-3 max-w-prose text-sm leading-relaxed text-white/45">
-          The email goes out Friday morning either way. Adding a line about what&apos;s coming is
+          The email goes out Friday morning either way, and each house below can also be sent
+          on WhatsApp by hand if an email doesn&apos;t get through. Adding a line about what&apos;s coming is
           what stops them ringing to ask. Tap the box and use the microphone on your keyboard —
           just say it out loud.
         </p>

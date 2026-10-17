@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Mic } from "lucide-react";
+import { Check, MessageCircle, Mic } from "lucide-react";
+import { toWhatsAppNumber } from "@/lib/phone";
+import { sendOnWhatsApp } from "@/lib/whatsapp";
 
 type House = {
   id: string;
@@ -13,6 +15,9 @@ type House = {
   thisWeek: { id: string; body: string; day: string }[];
   nextWeek: string | null;
   recipients: number;
+  owners: { id: string; name: string; phone: string | null }[];
+  /** The week's digest as it would be emailed. */
+  message: string;
 };
 
 /**
@@ -30,6 +35,9 @@ export default function FridayPrep({ houses }: { houses: House[] }) {
   );
   const [saved, setSaved] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  const [wa, setWa] = useState<string | null>(null);
+  /** His changes to a house's WhatsApp wording; absent means the generated text. */
+  const [waEdits, setWaEdits] = useState<Record<string, string>>({});
 
   async function save(houseId: string) {
     const value = drafts[houseId]?.trim() ?? "";
@@ -116,6 +124,72 @@ export default function FridayPrep({ houses }: { houses: House[] }) {
               placeholder="Brickies start Monday and should be done by Thursday. Windows are booked for Friday week."
               className="w-full rounded-lg border border-white/10 bg-dark px-4 py-3 leading-relaxed text-white placeholder:text-white/20 focus:border-gold focus:outline-none"
             />
+
+            {/* The same digest the email carries, for when the email doesn't land
+                or an owner would rather hear it on WhatsApp. Editable first. */}
+            <button
+              type="button"
+              onClick={() => setWa(wa === h.id ? null : h.id)}
+              className="mt-3 flex min-h-[40px] items-center gap-2 text-sm text-emerald-300 hover:text-emerald-200"
+            >
+              <MessageCircle size={14} aria-hidden="true" />
+              {wa === h.id ? "Hide the WhatsApp message" : "Send this week on WhatsApp"}
+            </button>
+            {wa === h.id && (
+              <div className="mt-2 rounded-lg bg-dark px-4 py-3">
+                <label
+                  htmlFor={`wa-${h.id}`}
+                  className="mb-1.5 block font-mono text-[10px] uppercase tracking-[0.13em] text-white/35"
+                >
+                  What they&apos;ll read — edit anything
+                </label>
+                <textarea
+                  id={`wa-${h.id}`}
+                  rows={9}
+                  value={waEdits[h.id] ?? h.message}
+                  onChange={(e) => setWaEdits((w) => ({ ...w, [h.id]: e.target.value }))}
+                  className="w-full resize-y rounded-lg border border-white/10 bg-dark-card px-3 py-2 text-sm leading-relaxed text-white/85 focus:border-gold focus:outline-none"
+                />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {h.owners.map((o) => {
+                    const hasNumber = Boolean(toWhatsAppNumber(o.phone));
+                    return (
+                      <button
+                        key={o.id}
+                        type="button"
+                        onClick={() =>
+                          sendOnWhatsApp({
+                            message: waEdits[h.id] ?? h.message,
+                            phone: o.phone,
+                            preferShareSheet: !hasNumber,
+                          })
+                        }
+                        title={hasNumber ? undefined : "No mobile on file — opens the share sheet so you can pick them"}
+                        className={
+                          "flex min-h-[44px] items-center gap-1.5 rounded-lg border px-4 text-sm " +
+                          (hasNumber
+                            ? "border-emerald-400/40 text-emerald-300 hover:border-emerald-400"
+                            : "border-white/15 text-white/55 hover:border-white/35")
+                        }
+                      >
+                        <MessageCircle size={14} aria-hidden="true" />
+                        Send to {o.name.split(" ")[0]}
+                      </button>
+                    );
+                  })}
+                  {h.owners.length === 0 && (
+                    <button
+                      type="button"
+                      onClick={() => sendOnWhatsApp({ message: waEdits[h.id] ?? h.message, preferShareSheet: true })}
+                      className="flex min-h-[44px] items-center gap-1.5 rounded-lg border border-white/15 px-4 text-sm text-white/70 hover:border-white/35"
+                    >
+                      <MessageCircle size={14} aria-hidden="true" />
+                      Choose who to send to
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </li>
         ))}
       </ol>
