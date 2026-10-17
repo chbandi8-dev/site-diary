@@ -47,9 +47,13 @@ jobs:
         with:
           persist-credentials: false
 
+      # Not 20. A library the app depends on (undici, by way of jsdom) calls a
+      # Node function that 20 does not have, and the build crashes while
+      # collecting page data. Everything here was developed and tested on 22, and
+      # Vercel builds this project on 24, so 22 is the oldest honest answer.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       # Runs `prisma generate` through the postinstall script.
