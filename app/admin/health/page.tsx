@@ -23,6 +23,7 @@ const NEAREST: Record<string, { vercel: string; place: string }> = {
   "ap-southeast-2": { vercel: "syd1", place: "Sydney" },
   "ap-southeast-1": { vercel: "sin1", place: "Singapore" },
   "ap-northeast-1": { vercel: "hnd1", place: "Tokyo" },
+  "ap-northeast-2": { vercel: "icn1", place: "Seoul" },
   "ap-south-1": { vercel: "bom1", place: "Mumbai" },
   "us-east-1": { vercel: "iad1", place: "Washington DC" },
   "us-west-1": { vercel: "sfo1", place: "San Francisco" },
