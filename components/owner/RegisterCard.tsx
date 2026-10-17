@@ -72,7 +72,7 @@ export default function RegisterCard() {
         Want an email when there&apos;s news about your build?
       </h2>
       <p className="mt-2 max-w-prose leading-relaxed text-text/65">
-        Usually a couple of times a week, plus a short summary on Fridays. Photos, progress, and
+        Usually a couple of times a week, plus a short summary on Fridays. Site updates, progress, and
         anything we need from you — nothing else, and nobody else gets your address. You&apos;re
         welcome to skip this and just check back whenever you like.
       </p>

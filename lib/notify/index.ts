@@ -147,7 +147,7 @@ function compose(row: PendingRow): string {
   const link = `${siteUrl()}/my`;
 
   // Anything composed at queue time carries its own text.
-  if (row.body) return `${row.body}\n\nSee the photos and full history: ${link}`;
+  if (row.body) return `${row.body}\n\nSee every update on your page: ${link}`;
 
   if (row.audience === "staff" && row.report) {
     const who = row.owner?.name ?? "An owner";
@@ -171,7 +171,7 @@ function compose(row: PendingRow): string {
     ].join("\n");
   }
 
-  return [row.update?.body ?? "", "", `See the photos and full history: ${link}`].join("\n");
+  return [row.update?.body ?? "", "", `See every update on your page: ${link}`].join("\n");
 }
 
 export type OwnerRecipient = Extract<Recipient, { audience: "owner" }>;

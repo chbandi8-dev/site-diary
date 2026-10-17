@@ -69,33 +69,12 @@ export async function getTimeline(houseId: string, limit = 40) {
       kind: true,
       body: true,
       occurredAt: true,
-      photos: {
-        where: { status: "ready", deletedAt: null },
-        select: { id: true, key: true, caption: true },
-        orderBy: { takenAt: "asc" },
-      },
     },
     orderBy: { occurredAt: "desc" },
     take: limit,
   });
 
-  // Photos live in a private bucket, so each render mints short-lived signed
-  // URLs. Access has already been established by the link.
-  return Promise.all(
-    updates.map(async (u) => ({
-      ...u,
-      occurred_at: u.occurredAt.toISOString(),
-      // `key` is deliberately dropped rather than spread: it publishes the
-      // bucket layout to the browser for no benefit.
-      photos: await Promise.all(
-        u.photos.map(async (p) => ({
-          id: p.id,
-          caption: p.caption,
-          url: await signDownload(p.key),
-        }))
-      ),
-    }))
-  );
+  return updates.map((u) => ({ ...u, occurred_at: u.occurredAt.toISOString() }));
 }
 
 /**

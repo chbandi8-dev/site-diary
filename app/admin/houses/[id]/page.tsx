@@ -62,7 +62,7 @@ export default async function HouseCapture({ params }: { params: { id: string } 
           startedAt: true,
           completedAt: true,
           estimatedEnd: true,
-          _count: { select: { updates: true, photos: true } },
+          _count: { select: { updates: true } },
         },
         orderBy: { position: "asc" },
       },
@@ -187,7 +187,6 @@ export default async function HouseCapture({ params }: { params: { id: string } 
                     phase: s.phase,
                     status: s.status,
                     notes: s._count.updates,
-                    photos: s._count.photos,
                   }))}
                 />
 

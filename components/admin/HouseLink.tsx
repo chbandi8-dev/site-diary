@@ -206,7 +206,7 @@ export default function HouseLink({
                 label="Send on WhatsApp"
                 chooseLabel="Pick who gets it"
                 message={
-                  `Hi — this is the page for ${address}. Photos and updates go up here as they happen, ` +
+                  `Hi — this is the page for ${address}. Updates on the build go up here as they happen, ` +
                   `and you can ask me anything through it: ${url}`
                 }
               />

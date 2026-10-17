@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 
 const ROOMS = [
   "Kitchen", "Living", "Main bedroom", "Bed 2", "Bed 3",
@@ -27,7 +27,6 @@ export default function AddDefect() {
   const [open, setOpen] = useState(false);
   const [location, setLocation] = useState("");
   const [description, setDescription] = useState("");
-  const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [added, setAdded] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -38,27 +37,17 @@ export default function AddDefect() {
     setError(null);
 
     try {
-      let photoId: string | undefined;
-      if (file) {
-        const form = new FormData();
-        form.append("file", file);
-        const up = await fetch("/api/owner/photos", { method: "POST", body: form });
-        if (!up.ok) throw new Error((await up.json()).error ?? "That photo wouldn't upload.");
-        photoId = (await up.json()).photoId;
-      }
-
       const res = await fetch("/api/owner/defects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description, location: location || undefined, photoId }),
+        body: JSON.stringify({ description, location: location || undefined }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "That didn't send.");
 
-      // Only the description and photo clear. The room usually does not change
+      // Only the description clears. The room usually does not change
       // between two items, and retyping it every time is the thing that makes
       // people stop halfway down a list.
       setDescription("");
-      setFile(null);
       setAdded((n) => n + 1);
       router.refresh();
     } catch (cause) {
@@ -126,29 +115,6 @@ export default function AddDefect() {
           placeholder="Scuff on the architrave beside the linen cupboard"
           className="border border-text/20 px-3 py-2.5 text-[15px] focus:border-accent-primary focus:outline-none"
         />
-      </div>
-
-      <div className="mt-4">
-        <label
-          htmlFor="defect-photo"
-          className="flex min-h-[48px] w-full cursor-pointer items-center justify-center gap-2 border border-dashed border-text/25 text-[15px] text-text/60 hover:border-accent-primary"
-        >
-          <Camera size={16} aria-hidden="true" />
-          {file ? file.name : "Take a photo of it"}
-        </label>
-        <input
-          id="defect-photo"
-          type="file"
-          accept="image/*"
-          // Opens the camera directly on a phone, which is where this is used.
-          capture="environment"
-          className="sr-only"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-        />
-        <p className="mt-1.5 text-sm text-text/50">
-          Optional, but it saves a conversation — a photo says exactly which one you
-          mean.
-        </p>
       </div>
 
       <div className="mt-5 flex flex-wrap gap-3">

@@ -1,15 +1,12 @@
 "use client";
 
 import Reveal from "./Reveal";
-import PhotoGrid from "./PhotoGrid";
 
-type Photo = { id: string; caption: string | null; url: string };
 type Update = {
   id: string;
   kind: string;
   body: string;
   occurredAt: Date;
-  photos: Photo[];
 };
 
 const KIND_LABEL: Record<string, string> = {
@@ -117,7 +114,6 @@ export default function Timeline({
                   {u.body}
                 </p>
 
-                <PhotoGrid photos={u.photos} label={formatWhen(u.occurredAt)} />
               </Reveal>
             </li>
           );

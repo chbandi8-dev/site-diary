@@ -2,16 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Check, MessageSquare, Plus, Send, Trash2, X } from "lucide-react";
+import { Check, MessageSquare, Plus, Send, Trash2, X } from "lucide-react";
 
 type Stage = {
   id: string;
   name: string;
   phase: string | null;
   status: string;
-  /** Updates and photos filed against this stage. */
+  /** Updates filed against this stage. */
   notes?: number;
-  photos?: number;
 };
 
 /**
@@ -371,17 +370,11 @@ export default function StageBoard({
                     {s.phase}
                     {/* Shown only when there is something there. A row of zeroes
                         on thirty stages is noise, and it would bury the two that
-                        actually have a photo behind them. */}
+                        actually have a note behind them. */}
                     {Boolean(s.notes) && (
                       <span className="flex items-center gap-1 text-white/45">
                         <MessageSquare size={10} aria-hidden="true" />
                         {s.notes}
-                      </span>
-                    )}
-                    {Boolean(s.photos) && (
-                      <span className="flex items-center gap-1 text-white/45">
-                        <Camera size={10} aria-hidden="true" />
-                        {s.photos}
                       </span>
                     )}
                   </span>
@@ -482,7 +475,7 @@ export default function StageBoard({
       <p className="mt-3 text-xs leading-relaxed text-white/35">
         Tap the tick to mark a stage done, tap it again to undo. The word on the right
         cycles Booked, Underway and On hold — more than one stage can be underway at a
-        time. Notes and photos are filed against a stage from the box above.
+        time. Notes are filed against a stage from the box above.
       </p>
     </section>
   );

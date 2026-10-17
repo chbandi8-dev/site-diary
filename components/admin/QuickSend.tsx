@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { toWhatsAppNumber } from "@/lib/phone";
 import { sendOnWhatsApp } from "@/lib/whatsapp";
 import { send as outboxSend } from "@/lib/outbox";
 import { useRouter } from "next/navigation";
-import { Camera, Check, ImagePlus, Loader2, MessageCircle, RotateCw, Users, X } from "lucide-react";
-import { uploadPhoto } from "@/lib/capture/photo";
+import { MessageCircle, Users, X } from "lucide-react";
 import VoiceNote from "./VoiceNote";
 
 type Slot = { name: string; label: string; options: string[] };
@@ -21,14 +20,6 @@ type Template = {
   preview: string;
 };
 
-type Attached = {
-  id: string;
-  name: string;
-  state: "uploading" | "ready" | "failed";
-  /** Kept on failure so the retry is one tap rather than finding the photo again. */
-  file?: File;
-};
-
 /**
  * The on-site screen.
  *
@@ -37,9 +28,6 @@ type Attached = {
  * capacitive touch degrades when wet, and no free-text input anywhere — every
  * blank is a picker. A keyboard on a slab in the sun is the thing being
  * designed out.
- *
- * Photos upload the moment they are taken, so the send is instant and a dropped
- * signal costs one photo rather than the whole update.
  */
 export default function QuickSend({
   houseId,
@@ -53,7 +41,6 @@ export default function QuickSend({
 }) {
   const router = useRouter();
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [photos, setPhotos] = useState<Attached[]>([]);
   const [open, setOpen] = useState<Template | null>(null);
   const [choices, setChoices] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
@@ -99,33 +86,6 @@ export default function QuickSend({
       );
   }, [houseId]);
 
-  const addPhotos = useCallback(
-    async (files: FileList, origin: "in_app" | "camera_roll" = "in_app") => {
-      // In parallel. One at a time meant a long stare at spinners on marginal
-      // 4G before he could send anything.
-      const queued = Array.from(files).map((file) => ({
-        id: crypto.randomUUID(),
-        file,
-      }));
-      setPhotos((p) => [
-        ...p,
-        ...queued.map((q) => ({ id: q.id, name: q.file.name, state: "uploading" as const })),
-      ]);
-
-      await Promise.all(
-        queued.map(async ({ id, file }) => {
-          try {
-            await uploadPhoto(houseId, file, { photoId: id, origin });
-            setPhotos((p) => p.map((x) => (x.id === id ? { ...x, state: "ready" } : x)));
-          } catch {
-            setPhotos((p) => p.map((x) => (x.id === id ? { ...x, state: "failed", file } : x)));
-          }
-        })
-      );
-    },
-    [houseId]
-  );
-
   function start(t: Template) {
     setResult(null);
     setChoices({});
@@ -165,7 +125,6 @@ export default function QuickSend({
               houseId,
               body: edited,
               kind: t.kind,
-              photoIds: photos.filter((p) => p.state === "ready").map((p) => p.id),
               stageId: stageId || undefined,
               hold: !t.sendsImmediately,
             },
@@ -177,7 +136,6 @@ export default function QuickSend({
               houseId,
               templateKey: t.key,
               slots,
-              photoIds: photos.filter((p) => p.state === "ready").map((p) => p.id),
               stageId: stageId || undefined,
             },
             t.label
@@ -188,7 +146,6 @@ export default function QuickSend({
         // form clears — retyping it later is exactly what this exists to stop.
         setResult({ ok: outcome.queued, text: outcome.error });
         if (outcome.queued) {
-          setPhotos([]);
           setOpen(null);
         }
         return;
@@ -203,7 +160,6 @@ export default function QuickSend({
       // once the send job has run. The window is short but it covers the
       // "wrong house" moment, which is the one that actually happens.
       if (data.published) setUndo({ id: data.id, until: Date.now() + 12_000 });
-      setPhotos([]);
       setOpen(null);
       router.refresh();
     } catch (cause) {
@@ -225,7 +181,6 @@ export default function QuickSend({
           houseId,
           body: draft,
           kind: draftKind,
-          photoIds: photos.filter((p) => p.state === "ready").map((p) => p.id),
           stageId: stageId || undefined,
           hold,
         },
@@ -236,7 +191,6 @@ export default function QuickSend({
         setResult({ ok: outcome.queued, text: outcome.error });
         if (outcome.queued) {
           setDraft(null);
-          setPhotos([]);
         }
         return;
       }
@@ -247,7 +201,6 @@ export default function QuickSend({
       if (data.published) toWhatsApp(draft);
       if (data.published) setUndo({ id: data.id, until: Date.now() + 12_000 });
       setDraft(null);
-      setPhotos([]);
       router.refresh();
     } catch (cause) {
       setResult({ ok: false, text: cause instanceof Error ? cause.message : "That didn't send." });
@@ -265,7 +218,6 @@ export default function QuickSend({
   }
 
   const categories = Array.from(new Set(templates.map((t) => t.category)));
-  const readyCount = photos.filter((p) => p.state === "ready").length;
 
   return (
     <div>
@@ -377,7 +329,7 @@ export default function QuickSend({
         </div>
       )}
 
-      {/* Photos first: he shoots, then says what happened. */}
+      {/* He says what happened, and the words appear for him to read. */}
       <div className="mb-5">
         <VoiceNote houseId={houseId} onDraft={(body) => { setDraft(body); setResult(null); }} />
       </div>
@@ -469,85 +421,6 @@ export default function QuickSend({
             )}
           </div>
         </div>
-      )}
-
-      {/*
-        Two buttons, not one. `capture` forces the camera and removes the
-        camera-roll option entirely on iOS — but he shoots with the native
-        camera out of habit, which is the whole reason capture reads GPS before
-        stripping it. Give him both paths.
-      */}
-      <div className="grid grid-cols-2 gap-2">
-        <label
-          htmlFor="quick-camera"
-          className="flex min-h-[76px] cursor-pointer items-center justify-center gap-2.5 rounded-lg border-2 border-dashed border-white/15 px-4 text-white/70 transition-colors hover:border-gold/50 hover:text-white"
-        >
-          <Camera size={20} aria-hidden="true" />
-          <span className="font-medium">Take a photo</span>
-        </label>
-        <label
-          htmlFor="quick-roll"
-          className="flex min-h-[76px] cursor-pointer items-center justify-center gap-2.5 rounded-lg border-2 border-dashed border-white/15 px-4 text-white/70 transition-colors hover:border-gold/50 hover:text-white"
-        >
-          <ImagePlus size={20} aria-hidden="true" />
-          <span className="font-medium">From camera roll</span>
-        </label>
-      </div>
-      {readyCount > 0 && (
-        <p className="mt-2 text-center text-sm text-gold">
-          {readyCount} photo{readyCount === 1 ? "" : "s"} ready to send
-        </p>
-      )}
-      <input
-        id="quick-camera"
-        type="file"
-        accept="image/*"
-        multiple
-        capture="environment"
-        className="sr-only"
-        onChange={(e) => e.target.files && addPhotos(e.target.files, "in_app")}
-      />
-      <input
-        id="quick-roll"
-        type="file"
-        accept="image/*"
-        multiple
-        className="sr-only"
-        onChange={(e) => e.target.files && addPhotos(e.target.files, "camera_roll")}
-      />
-
-      {photos.length > 0 && (
-        <ul className="mt-3 flex flex-wrap gap-2">
-          {photos.map((p) => (
-            <li
-              key={p.id}
-              className="flex items-center gap-2 rounded-full bg-dark-lighter px-3 py-1.5 text-xs text-white/70"
-            >
-              {p.state === "uploading" && <Loader2 size={13} className="animate-spin" aria-hidden="true" />}
-              {p.state === "ready" && <Check size={13} className="text-gold" aria-hidden="true" />}
-              {p.state === "failed" && <X size={13} className="text-danger" aria-hidden="true" />}
-              <span className="max-w-[9rem] truncate">{p.name}</span>
-              {/*
-                A failed photo used to be silently dropped from the send, so he
-                would post an update believing the picture went with it.
-              */}
-              {p.state === "failed" && p.file && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const list = new DataTransfer();
-                    list.items.add(p.file!);
-                    setPhotos((all) => all.filter((x) => x.id !== p.id));
-                    void addPhotos(list.files);
-                  }}
-                  className="flex items-center gap-1 text-gold"
-                >
-                  <RotateCw size={12} aria-hidden="true" /> Retry
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
       )}
 
       <div className="mt-9 flex flex-col gap-7">

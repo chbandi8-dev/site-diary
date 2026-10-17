@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import { signDownload } from "@/lib/r2";
 import HouseLink from "@/components/admin/HouseLink";
 import RecentUpdates from "@/components/admin/RecentUpdates";
 import InternalNotes from "@/components/admin/InternalNotes";
@@ -99,7 +98,7 @@ export async function OwnersTab({ houseId, address, owners }: { houseId: string;
 export async function SiteTab({
   houseId, address, suburb, underway,
 }: { houseId: string; address: string; suburb: string | null; underway: string[] }) {
-  const [defects, weatherDays, forecasts, recentPhotos, trades] = await Promise.all([
+  const [defects, weatherDays, forecasts, trades] = await Promise.all([
     prisma.defect.findMany({
       where: { houseId },
       select: {
@@ -121,13 +120,6 @@ export async function SiteTab({
       orderBy: { createdAt: "desc" },
       take: 4,
     }),
-    // Recent photos, for sending to a trade.
-    prisma.photo.findMany({
-      where: { houseId, status: "ready", deletedAt: null },
-      select: { id: true, key: true, caption: true, takenAt: true },
-      orderBy: [{ takenAt: "desc" }, { createdAt: "desc" }],
-      take: 8,
-    }),
     // His address book, so a message about this build is two taps.
     prisma.trade.findMany({
       where: { archivedAt: null },
@@ -138,16 +130,6 @@ export async function SiteTab({
       },
     }),
   ]);
-
-  // Signed here rather than in the browser — the bucket is private and these
-  // are other people's homes. Signing is local, so it costs no round trip.
-  const photos = await Promise.all(
-    recentPhotos.map(async (p) => ({
-      id: p.id,
-      caption: p.caption,
-      url: await signDownload(p.key),
-    }))
-  );
 
   const house = { id: houseId, address, suburb, defects, weatherDays, forecasts };
   return (
@@ -183,7 +165,6 @@ export async function SiteTab({
                   address={house.address}
                   suburb={suburb}
                   trades={trades}
-                  photos={photos}
                   underway={underway}
                   openDefects={house.defects
                     .filter((d) => d.status !== "resolved")

@@ -48,7 +48,6 @@ export default async function MyBuild() {
 
   // What they opened the link to see. It was previously below the header, the
   // phase rail and a form — a scroll away from the one thing they came for.
-  const latest = updates.find((u) => u.photos.length > 0)?.photos[0] ?? null;
 
   return (
     <main className="mx-auto max-w-3xl px-5 pb-24 pt-12 sm:pt-16">
@@ -59,12 +58,11 @@ export default async function MyBuild() {
         next={nextStage(stages)}
         lastUpdate={updates[0]?.occurredAt ?? null}
         builder={builder}
-        latestPhoto={latest ? { url: latest.url, caption: latest.caption } : null}
       />
 
       {/*
-        Placed after the header, never before it. The moment someone sees photos
-        of their own build is the moment they will happily hand over an email —
+        Placed after the header, never before it. The moment someone sees the
+        progress on their own build is the moment they will happily hand over an email —
         asking first spends that goodwill and loses people at the door.
       */}
       {/* Above the timeline: this is the one thing on the page that asks
@@ -123,7 +121,7 @@ export default async function MyBuild() {
       />
 
       {/* Below the timeline: these answer questions rather than report news,
-          and an owner opening the link wants today's photo first. */}
+          and an owner opening the link wants today's update first. */}
       <WetDays days={wetDays} />
 
       <Documents documents={documents} />

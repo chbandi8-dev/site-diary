@@ -97,7 +97,7 @@ export function buildTasks(
           days === null
             ? `${link.owner.name} has never opened their page`
             : `${link.owner.name} hasn't looked in ${Math.floor(days / 7)} weeks`,
-        detail: "Worth a call or a photo — they may not know what's happening",
+        detail: "Worth a call — they may not know what's happening",
         kind: "unseen",
       });
     }

@@ -18,7 +18,7 @@ const KINDS = [
   {
     value: "question",
     label: "A question",
-    hint: "Something you'd like explained — including anything in a photo that looks odd.",
+    hint: "Something you'd like explained — including anything on site that looks odd.",
   },
   {
     value: "issue",
@@ -141,20 +141,10 @@ export default function ReportPanel({
     setError(null);
 
     try {
-      let photoId: string | undefined;
-
-      if (file) {
-        const form = new FormData();
-        form.append("file", file);
-        const up = await fetch("/api/owner/photos", { method: "POST", body: form });
-        if (!up.ok) throw new Error((await up.json()).error ?? "That photo wouldn't upload.");
-        photoId = (await up.json()).photoId;
-      }
-
       const res = await fetch("/api/owner/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, body, photoId }),
+        body: JSON.stringify({ kind, body }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "That didn't send.");
 
@@ -173,7 +163,7 @@ export default function ReportPanel({
     <section className="mt-14 border-t border-text/10 pt-10">
       <h2 className="mb-2 font-display text-2xl tracking-tight">Ask a question, or flag something</h2>
       <p className="mb-7 max-w-prose leading-relaxed text-text/65">
-        Anything at all — a question, something that looks wrong in a photo, or something that
+        Anything at all — a question, something that looks wrong on site, or something that
         needs attention. He&apos;ll see it straight away. He&apos;s on site Monday to Friday, so
         answers usually come back in the evening — give him a day or two.
       </p>
@@ -238,24 +228,8 @@ export default function ReportPanel({
             rows={4}
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            placeholder="There's a gap under the window frame in today's photo — is that meant to be there?"
+            placeholder="There's a gap under the window frame — is that meant to be there?"
             className="w-full border border-text/15 bg-white px-4 py-3 leading-relaxed focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/25"
-          />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="report-photo"
-            className="font-mono text-[11px] uppercase tracking-[0.12em] text-text/50"
-          >
-            Add a photo (optional, but it helps)
-          </label>
-          <input
-            id="report-photo"
-            type="file"
-            accept="image/*"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="text-sm file:mr-3 file:border file:border-text/15 file:bg-white file:px-4 file:py-2 file:text-sm"
           />
         </div>
 

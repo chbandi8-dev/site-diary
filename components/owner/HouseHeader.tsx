@@ -38,7 +38,6 @@ export default function HouseHeader({
   next,
   lastUpdate,
   builder,
-  latestPhoto,
 }: {
   house: House;
   stages: OwnerStage[];
@@ -46,7 +45,6 @@ export default function HouseHeader({
   next?: OwnerStage;
   lastUpdate?: Date | null;
   builder?: { name: string | null; phone: string | null; email: string | null };
-  latestPhoto?: { url: string; caption: string | null } | null;
 }) {
   const reduced = useReducedMotion();
   const handover = formatRange(house.handoverFrom, house.handoverTo);
@@ -90,20 +88,6 @@ export default function HouseHeader({
             month: "long",
           })}
         </motion.p>
-      )}
-
-      {latestPhoto && (
-        <motion.figure {...rise(0.12)} className="mt-7">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={latestPhoto.url}
-            alt={latestPhoto.caption ?? `The most recent photo of ${house.address}`}
-            className="aspect-[3/2] w-full bg-surface object-cover"
-          />
-          {latestPhoto.caption && (
-            <figcaption className="mt-2 text-sm text-text/55">{latestPhoto.caption}</figcaption>
-          )}
-        </motion.figure>
       )}
 
       {/*
