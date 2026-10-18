@@ -1,4 +1,4 @@
-import type { StageStatus, UpdateKind } from "@/lib/assistant";
+import type { Payload } from "./assistant-payload";
 
 /**
  * The shape an action travels in between the server that proposed it and the
@@ -15,40 +15,7 @@ import type { StageStatus, UpdateKind } from "@/lib/assistant";
  * exists.
  */
 
-export type ActionPayload =
-  | { kind: "stage"; houseId: string; stage: string; status: StageStatus }
-  | { kind: "note"; houseId: string; body: string }
-  | { kind: "update"; houseId: string; body: string; updateKind: UpdateKind }
-  | { kind: "waiting"; houseId: string; waitingOn: string | null; eta: string | null }
-  | { kind: "next_week"; houseId: string; body: string }
-  | { kind: "wet_day"; houseId: string; date: string; note: string | null }
-  | {
-      kind: "defect";
-      houseId: string;
-      location: string | null;
-      description: string;
-      target: string | null;
-    }
-  | {
-      kind: "owner";
-      houseId: string;
-      /** Null when the person is not on the house yet and will be added. */
-      ownerId: string | null;
-      name: string;
-      phone: string | null;
-      email: string | null;
-    }
-  | {
-      kind: "house";
-      address: string;
-      suburb: string | null;
-      storeys: 1 | 2 | null;
-      owners: { name: string; email: string | null }[];
-      currentStage: string | null;
-      waitingOn: string | null;
-      handoverFrom: string | null;
-      handoverTo: string | null;
-    };
+export type ActionPayload = Payload;
 
 export type ProposedAction = {
   /** Stable key for the review list. Not read by the server. */

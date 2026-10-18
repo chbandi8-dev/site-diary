@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createHouse, NoStageTemplates } from "@/lib/create-house";
 import { z } from "zod";
+import { payload, type Payload } from "@/lib/assistant-payload";
 import { refreshQuietly } from "@/lib/programme";
 
 export const dynamic = "force-dynamic";
@@ -32,81 +33,8 @@ export const dynamic = "force-dynamic";
 
 const day = (value: string) => new Date(`${value}T00:00:00.000Z`);
 
-const houseId = z.string().uuid();
-const isoDay = z.string().date();
-
-const payload = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("stage"),
-    houseId,
-    stage: z.string().trim().min(1).max(120),
-    status: z.enum([
-      "not_started",
-      "scheduled",
-      "in_progress",
-      "on_hold",
-      "complete",
-      "not_applicable",
-    ]),
-  }),
-  z.object({ kind: z.literal("note"), houseId, body: z.string().trim().min(1).max(4000) }),
-  z.object({
-    kind: z.literal("update"),
-    houseId,
-    body: z.string().trim().min(1).max(4000),
-    updateKind: z.enum(["progress", "delay", "milestone", "weather", "message"]),
-  }),
-  z.object({
-    kind: z.literal("waiting"),
-    houseId,
-    waitingOn: z.string().trim().max(200).nullable(),
-    eta: isoDay.nullable(),
-  }),
-  z.object({ kind: z.literal("next_week"), houseId, body: z.string().trim().min(1).max(1000) }),
-  z.object({
-    kind: z.literal("wet_day"),
-    houseId,
-    date: isoDay,
-    note: z.string().trim().max(200).nullable(),
-  }),
-  z.object({
-    kind: z.literal("defect"),
-    houseId,
-    location: z.string().trim().max(120).nullable(),
-    description: z.string().trim().min(1).max(600),
-    target: isoDay.nullable(),
-  }),
-  z.object({
-    kind: z.literal("owner"),
-    houseId,
-    ownerId: z.string().uuid().nullable(),
-    name: z.string().trim().min(1).max(120),
-    phone: z.string().trim().max(40).nullable(),
-    email: z.string().trim().email().max(200).nullable(),
-  }),
-  z.object({
-    kind: z.literal("house"),
-    address: z.string().trim().min(3).max(200),
-    suburb: z.string().trim().max(120).nullable(),
-    storeys: z.union([z.literal(1), z.literal(2)]).nullable(),
-    owners: z
-      .array(
-        z.object({
-          name: z.string().trim().min(1).max(120),
-          email: z.string().trim().max(200).nullable(),
-        })
-      )
-      .max(2),
-    currentStage: z.string().trim().max(120).nullable(),
-    waitingOn: z.string().trim().max(200).nullable(),
-    handoverFrom: isoDay.nullable(),
-    handoverTo: isoDay.nullable(),
-  }),
-]);
-
 const body = z.object({ actions: z.array(payload).min(1).max(20) });
 
-type Payload = z.infer<typeof payload>;
 type Outcome = { ok: true; done: string; houseId?: string } | { ok: false; error: string };
 
 async function apply(action: Payload, userId: string): Promise<Outcome> {
@@ -292,6 +220,123 @@ async function apply(action: Payload, userId: string): Promise<Outcome> {
           error: clash ? "That email already belongs to someone else." : "That one didn't save.",
         };
       }
+    }
+
+    case "handover": {
+      const house = await prisma.house.findUnique({
+        where: { id: action.houseId },
+        select: { id: true, handoverFrom: true, handoverTo: true, targetHandover: true },
+      });
+      if (!house) return { ok: false, error: "That house is gone." };
+      const from = day(action.from);
+      const to = day(action.to);
+      const moved =
+        house.handoverFrom?.getTime() !== from.getTime() || house.handoverTo?.getTime() !== to.getTime();
+      await prisma.$transaction([
+        prisma.house.update({ where: { id: house.id }, data: { handoverFrom: from, handoverTo: to } }),
+        ...(moved
+          ? [
+              prisma.handoverForecast.create({
+                data: { houseId: house.id, from, to, reason: "Set by voice" },
+              }),
+            ]
+          : []),
+      ]);
+      // As the house screen does: the far end becomes the promise only if none
+      // was made, and the programme is rebuilt from it. Nobody is emailed.
+      await refreshQuietly(house.id, !house.targetHandover ? { target: to } : undefined);
+      return { ok: true, done: "Handover date set", houseId: house.id };
+    }
+
+    case "inspection": {
+      const house = await prisma.house.findUnique({
+        where: { id: action.houseId },
+        select: { id: true },
+      });
+      if (!house) return { ok: false, error: "That house is gone." };
+
+      // The open one of this kind if there is one — "frame passed" should close
+      // the frame inspection he booked, not start a second.
+      const existing = await prisma.inspection.findFirst({
+        where: {
+          houseId: house.id,
+          kind: action.inspectionKind,
+          status: { not: "passed" },
+          ...(action.inspectionKind === "other" && action.label
+            ? { label: { equals: action.label, mode: "insensitive" as const } }
+            : {}),
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+      const decided = action.status === "passed" || action.status === "failed";
+      const data = {
+        status: action.status,
+        bookedFor: action.date ? day(action.date) : undefined,
+        resultAt: decided ? new Date() : null,
+      };
+      if (existing) {
+        await prisma.inspection.update({ where: { id: existing.id }, data });
+      } else {
+        await prisma.inspection.create({
+          data: {
+            houseId: house.id,
+            kind: action.inspectionKind,
+            label: action.inspectionKind === "other" ? action.label : null,
+            ...data,
+          },
+        });
+      }
+      return { ok: true, done: existing ? "Inspection updated" : "Inspection added", houseId: house.id };
+    }
+
+    case "house_status": {
+      const house = await prisma.house.findUnique({
+        where: { id: action.houseId },
+        select: { id: true },
+      });
+      if (!house) return { ok: false, error: "That house is gone." };
+      await prisma.house.update({
+        where: { id: house.id },
+        data: {
+          status: action.status,
+          handedOverAt: action.status === "handed_over" ? new Date() : null,
+        },
+      });
+      return {
+        ok: true,
+        done: action.status === "handed_over" ? "Marked as handed over" : "House reopened",
+        houseId: house.id,
+      };
+    }
+
+    case "defect_done": {
+      // Looked up within the house, so a stale screen cannot close somebody
+      // else's defect. No email goes out from here, unlike ticking it by hand:
+      // anything that tells an owner is a decision he takes on a screen.
+      const defect = await prisma.defect.findFirst({
+        where: { id: action.defectId, houseId: action.houseId },
+        select: { id: true, reference: true },
+      });
+      if (!defect) return { ok: false, error: "That defect isn't on this house." };
+      await prisma.defect.update({
+        where: { id: defect.id },
+        data: { status: "resolved", resolvedAt: new Date() },
+      });
+      return { ok: true, done: `Defect ${defect.reference ?? ""} fixed`.trim(), houseId: action.houseId };
+    }
+
+    case "trade": {
+      await prisma.trade.create({
+        data: {
+          name: action.name,
+          trade: action.trade,
+          phone: action.phone,
+          company: action.company,
+          notes: action.notes,
+        },
+      });
+      return { ok: true, done: `${action.name} added to your trades` };
     }
 
     case "house": {

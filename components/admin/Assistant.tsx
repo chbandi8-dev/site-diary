@@ -44,8 +44,11 @@ type Result = { ok: boolean; done?: string; error?: string; houseId?: string };
 
 const EXAMPLES = [
   "Lot 114, frame's done and the roof starts Tuesday",
+  "Frame inspection at Wentworth is booked for Wednesday",
   "Private note on Wentworth — brickie still owes me two days",
-  "Draft the owners at D'Arcy Road something about the tiling being finished",
+  "Arny's number at Mardi Street is 0419 696 104",
+  "Handover at Delgaun Place is end of May",
+  "Waiting on tile selections at Mardi Street",
   "Yesterday was a wet day at Kellyville Ridge",
   "New house, 22 Hillcrest Avenue Baulkham Hills, double storey, the Rileys",
 ];

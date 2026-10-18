@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { readActionsFromSpeech, type Action } from "@/lib/assistant";
-import type { ProposedAction } from "@/lib/assistant-actions";
+import { readActionsFromSpeech } from "@/lib/assistant";
+import { proposeActions } from "@/lib/assistant-propose";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -23,23 +23,6 @@ const body = z.object({
   /** The house whose screen he is on, so "the frame's done" needs no address. */
   houseId: z.string().uuid().optional(),
 });
-
-const STATUS_WORDS: Record<string, string> = {
-  not_started: "not started",
-  scheduled: "scheduled",
-  in_progress: "underway",
-  on_hold: "on hold",
-  complete: "done",
-  not_applicable: "not applicable",
-};
-
-function shortDate(iso: string): string {
-  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-AU", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
-}
 
 export async function POST(req: NextRequest) {
   if (!(await getServerSession(authOptions))) {
@@ -63,7 +46,13 @@ export async function POST(req: NextRequest) {
         development: { select: { name: true } },
         owners: {
           where: { revokedAt: null },
-          select: { owner: { select: { id: true, name: true, phone: true, email: true } } },
+          select: { owner: { select: { id: true, name: true, phone: true } } },
+        },
+        defects: {
+          where: { status: { not: "resolved" } },
+          select: { id: true, reference: true, location: true, description: true },
+          orderBy: { raisedAt: "asc" },
+          take: 40,
         },
       },
       orderBy: { address: "asc" },
@@ -138,195 +127,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const actions: ProposedAction[] = [];
-
-  result.actions.forEach((action: Action, i: number) => {
-    const id = `a${i}`;
-
-    if (action.kind === "house") {
-      const parts = [action.suburb, action.storeys ? `${action.storeys} storey` : null]
-        .filter(Boolean)
-        .join(" · ");
-      actions.push({
-        id,
-        title: `Add ${action.address} to the books`,
-        houseLabel: parts || "New house",
-        bodyField: null,
-        bodyLabel: null,
-        seenBy: "you",
-        footnote: [
-          action.owners.length
-            ? `Owners: ${action.owners.map((o: { name: string }) => o.name).join(" & ")}`
-            : "No owners yet",
-          action.currentStage ? `Starting at ${action.currentStage}` : null,
-          "All 32 standard stages are copied across",
-        ]
-          .filter(Boolean)
-          .join(" · "),
-        payload: {
-          kind: "house",
-          address: action.address,
-          suburb: action.suburb,
-          storeys: action.storeys,
-          owners: action.owners,
-          currentStage: action.currentStage,
-          waitingOn: action.waitingOn,
-          handoverFrom: action.handoverFrom,
-          handoverTo: action.handoverTo,
-        },
-      });
-      return;
-    }
-
-    const house = byNumber.get(action.house);
-    if (!house) return;
-    const houseLabel = shortLabel(house);
-    const common = { id, houseLabel };
-
-    switch (action.kind) {
-      case "stage":
-        actions.push({
-          ...common,
-          title: `Mark ${action.stage} as ${STATUS_WORDS[action.status] ?? action.status}`,
-          bodyField: null,
-          bodyLabel: null,
-          seenBy: "owners",
-          footnote: "Owners see the phase move on their page",
-          payload: { kind: "stage", houseId: house.id, stage: action.stage, status: action.status },
-        });
-        break;
-
-      case "note":
-        actions.push({
-          ...common,
-          title: "Add a private note",
-          bodyField: "body",
-          bodyLabel: "Your note",
-          seenBy: "you",
-          footnote: "Owners never see these. Keep it factual — a diary is discoverable in a dispute",
-          payload: { kind: "note", houseId: house.id, body: action.body },
-        });
-        break;
-
-      case "update":
-        actions.push({
-          ...common,
-          title: "Draft an update for the owners",
-          bodyField: "body",
-          bodyLabel: "What they'll read",
-          seenBy: "owners",
-          footnote: "Saved unsent. You read it and send it from the house page",
-          payload: {
-            kind: "update",
-            houseId: house.id,
-            body: action.body,
-            updateKind: action.updateKind,
-          },
-        });
-        break;
-
-      case "waiting":
-        actions.push({
-          ...common,
-          title: action.waitingOn
-            ? `Waiting on: ${action.waitingOn}`
-            : "Clear what this house is waiting on",
-          bodyField: null,
-          bodyLabel: null,
-          seenBy: "owners",
-          footnote: action.eta ? `Expected ${shortDate(action.eta)}` : "No date given",
-          payload: {
-            kind: "waiting",
-            houseId: house.id,
-            waitingOn: action.waitingOn,
-            eta: action.eta,
-          },
-        });
-        break;
-
-      case "next_week":
-        actions.push({
-          ...common,
-          title: "Set what's happening next week",
-          bodyField: "body",
-          bodyLabel: "Next week",
-          seenBy: "owners",
-          footnote: "Goes out with Friday's email",
-          payload: { kind: "next_week", houseId: house.id, body: action.body },
-        });
-        break;
-
-      case "wet_day":
-        actions.push({
-          ...common,
-          title: `Log ${shortDate(action.date)} as a wet day`,
-          bodyField: null,
-          bodyLabel: null,
-          seenBy: "owners",
-          footnote: action.note ?? "Counts towards an extension of time",
-          payload: { kind: "wet_day", houseId: house.id, date: action.date, note: action.note },
-        });
-        break;
-
-      case "owner": {
-        // Placed against the people already on the house, here, so the
-        // approval screen can say whether this fixes someone or adds them.
-        const spoken = action.name.trim().toLowerCase();
-        const people = house.owners.map((o) => o.owner);
-        const exact = people.filter((p) => p.name.trim().toLowerCase() === spoken);
-        const firstOnly = people.filter(
-          (p) => p.name.trim().toLowerCase().split(/\s+/)[0] === spoken.split(/\s+/)[0]
-        );
-        const match = exact.length === 1 ? exact[0] : firstOnly.length === 1 ? firstOnly[0] : null;
-        const what = [action.phone && "mobile", action.email && "email"].filter(Boolean).join(" and ");
-        actions.push({
-          ...common,
-          title: match ? `Save ${match.name}'s ${what}` : `Add ${action.name} as an owner`,
-          bodyField: null,
-          bodyLabel: null,
-          seenBy: "you",
-          footnote: [
-            action.phone && `Mobile ${action.phone}`,
-            action.email && action.email,
-            match?.phone && action.phone && match.phone !== action.phone
-              ? `Replaces ${match.phone}`
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" · "),
-          payload: {
-            kind: "owner",
-            houseId: house.id,
-            ownerId: match?.id ?? null,
-            name: match?.name ?? action.name,
-            phone: action.phone,
-            email: action.email,
-          },
-        });
-        break;
-      }
-
-      case "defect":
-        actions.push({
-          ...common,
-          title: action.location ? `Defect — ${action.location}` : "Add a defect",
-          bodyField: "description",
-          bodyLabel: "What needs fixing",
-          seenBy: "owners",
-          footnote: action.target
-            ? `Target ${shortDate(action.target)}`
-            : "Owners see their defects list",
-          payload: {
-            kind: "defect",
-            houseId: house.id,
-            location: action.location,
-            description: action.description,
-            target: action.target,
-          },
-        });
-        break;
-    }
+  const proposed = proposeActions(result.actions, (n) => {
+    const h = byNumber.get(n);
+    if (!h) return undefined;
+    return {
+      id: h.id,
+      label: shortLabel(h),
+      owners: h.owners.map((o) => o.owner),
+      openDefects: h.defects,
+    };
   });
+  const note = [result.note, ...proposed.notes].filter(Boolean).join("\n\n") || null;
 
-  return NextResponse.json({ actions, note: result.note });
+  return NextResponse.json({ actions: proposed.actions, note });
 }

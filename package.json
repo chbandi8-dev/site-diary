@@ -17,6 +17,7 @@
     "db:seed:demo:clear": "ts-node --project tsconfig.scripts.json prisma/seed-demo.ts --clear",
     "import:houses": "ts-node --project tsconfig.scripts.json scripts/import-houses.ts",
     "sweep:photos": "ts-node --project tsconfig.scripts.json scripts/sweep-orphan-photos.ts",
+    "eval:voice": "ts-node --project tsconfig.scripts.json scripts/voice-eval.ts",
     "check:setup": "ts-node --project tsconfig.scripts.json scripts/check-setup.ts",
     "test": "TS_NODE_PROJECT=tsconfig.scripts.json TS_NODE_TRANSPILE_ONLY=1 node --require ts-node/register --test tests/*.test.ts"
   },
