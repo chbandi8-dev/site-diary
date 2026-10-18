@@ -4,9 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  AlertCircle, Check, Eye, Loader2, Lock, Mic, Square, Wand2, X,
+  AlertCircle, Check, Eye, Loader2, Lock, MessageCircle, Mic, Square, Wand2, X,
 } from "lucide-react";
 import { useDictation } from "./useDictation";
+import { toWhatsAppNumber } from "@/lib/phone";
+import { sendOnWhatsApp } from "@/lib/whatsapp";
 import type { ActionPayload, ProposedAction } from "@/lib/assistant-actions";
 
 /**
@@ -40,10 +42,18 @@ import type { ActionPayload, ProposedAction } from "@/lib/assistant-actions";
 
 type Stage = "speak" | "review" | "done";
 
-type Result = { ok: boolean; done?: string; error?: string; houseId?: string };
+type Result = {
+  ok: boolean;
+  done?: string;
+  error?: string;
+  houseId?: string;
+  /** A message he still has to hand to WhatsApp, which only he can tap. */
+  whatsapp?: { message: string; recipients: { name: string; phone: string | null }[] };
+};
 
 const EXAMPLES = [
   "Lot 114, frame's done and the roof starts Tuesday",
+  "Tell Arny at Mardi Street the roof starts Tuesday",
   "Frame inspection at Wentworth is booked for Wednesday",
   "Private note on Wentworth — brickie still owes me two days",
   "Arny's number at Mardi Street is 0419 696 104",
@@ -505,6 +515,45 @@ export default function Assistant() {
                           >
                             Open
                           </Link>
+                        )}
+                        {r.ok && r.whatsapp && (
+                          <span className="mt-3 flex flex-col gap-2">
+                            {r.whatsapp.recipients.map((o) => {
+                              const hasNumber = Boolean(toWhatsAppNumber(o.phone));
+                              return (
+                                <button
+                                  key={o.name}
+                                  type="button"
+                                  onClick={() =>
+                                    sendOnWhatsApp({
+                                      message: r.whatsapp!.message,
+                                      phone: o.phone,
+                                      preferShareSheet: !hasNumber,
+                                    })
+                                  }
+                                  className="flex min-h-[48px] items-center justify-center gap-2 rounded-lg bg-emerald-500/90 px-5 font-medium text-dark hover:bg-emerald-400"
+                                >
+                                  <MessageCircle size={16} aria-hidden="true" />
+                                  {hasNumber
+                                    ? `Send to ${o.name.split(" ")[0]} on WhatsApp`
+                                    : `Pick ${o.name.split(" ")[0]} in WhatsApp`}
+                                </button>
+                              );
+                            })}
+                            {r.whatsapp.recipients.length !== 1 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  sendOnWhatsApp({ message: r.whatsapp!.message, preferShareSheet: true })
+                                }
+                                className="min-h-[44px] rounded-lg border border-white/15 px-5 text-sm text-white/70 hover:border-white/35"
+                              >
+                                {r.whatsapp.recipients.length === 0
+                                  ? "Choose who to send to in WhatsApp"
+                                  : "Send to everyone — pick in WhatsApp"}
+                              </button>
+                            )}
+                          </span>
                         )}
                       </span>
                     </li>

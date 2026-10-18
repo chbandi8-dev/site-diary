@@ -55,6 +55,14 @@ export const payload = z.discriminatedUnion("kind", [
     email: z.string().trim().email().max(200).nullable(),
   }),
   z.object({
+    kind: z.literal("send"),
+    houseId,
+    body: z.string().trim().min(1).max(4000),
+    updateKind: z.enum(["progress", "delay", "milestone", "weather", "message"]),
+    /** Which owners it is for; empty is nobody, never "everybody by default". */
+    ownerIds: z.array(z.string().uuid()).max(6),
+  }),
+  z.object({
     kind: z.literal("handover"),
     houseId,
     from: isoDay,

@@ -18,6 +18,7 @@ export type Action =
   | { kind: "wet_day"; house: number; date: string; note: string | null }
   | { kind: "defect"; house: number; location: string | null; description: string; target: string | null }
   | { kind: "owner"; house: number; name: string; phone: string | null; email: string | null }
+  | { kind: "send"; house: number; body: string; messageKind: UpdateKind; to: string | null }
   | { kind: "handover"; house: number; from: string | null; to: string | null }
   | {
       kind: "inspection";
@@ -183,6 +184,25 @@ export const TOOLS: Anthropic.Tool[] = [
         email: { type: "string" },
       },
       required: ["house", "name"],
+    },
+  },
+  {
+    name: "send_owner_message",
+    description:
+      "A message he wants to send to the owners of one house on WhatsApp — he says 'send', 'tell', 'message', or dictates the message itself. If he dictated the words, keep them exactly (fix only obvious dictation mistakes). If he only gave the gist, write it for him.",
+    input_schema: {
+      type: "object",
+      properties: {
+        house: HOUSE_REF,
+        body: { type: "string", description: "The message, written for the owner to read." },
+        to: { type: "string", description: "Only when he names one owner: their name as he said it. Omit to message everyone on the house." },
+        kind: {
+          type: "string",
+          enum: ["progress", "delay", "milestone", "weather", "message"],
+          description: "delay if it tells them something is running late.",
+        },
+      },
+      required: ["house", "body"],
     },
   },
   {
@@ -405,6 +425,17 @@ export function interpretToolCalls(
         const goodPhone = phone && phone.replace(/\D/g, "").length >= 8 ? phone : null;
         if (!placed || !name || (!goodPhone && !goodEmail)) break;
         actions.push({ kind: "owner", house, name, phone: goodPhone, email: goodEmail });
+        break;
+      }
+
+      case "send_owner_message": {
+        const body = cleanText(raw.body, 4000);
+        if (!placed || !body) break;
+        const k = typeof raw.kind === "string" ? raw.kind : "message";
+        const messageKind = (
+          ["progress", "delay", "milestone", "weather", "message"].includes(k) ? k : "message"
+        ) as UpdateKind;
+        actions.push({ kind: "send", house, body, messageKind, to: cleanText(raw.to, 120) });
         break;
       }
 

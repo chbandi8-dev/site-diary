@@ -259,6 +259,36 @@ export function proposeActions(
         break;
       }
 
+      case "send": {
+        const named = action.to ? matchOwner(action.to, house.owners) : null;
+        const targets = named ? [named] : house.owners;
+        const who = targets.map((o) => o.name.split(" ")[0]).join(" & ");
+        if (action.to && !named) {
+          notes.push(
+            `Couldn't tell which owner "${action.to}" is on ${house.label}, so the message is set for everyone on the house — untick it if that's wrong.`
+          );
+        }
+        out.push({
+          ...common,
+          title: who ? `Send this to ${who} on WhatsApp` : "Post this to the owners' page",
+          bodyField: "body",
+          bodyLabel: "What they'll read — edit anything",
+          seenBy: "owners",
+          footnote:
+            action.messageKind === "delay"
+              ? "A delay is saved as a draft first — ring them, then send. You still get the WhatsApp button"
+              : "It goes on their page, and WhatsApp opens for you to tap send. Nothing leaves until you tap",
+          payload: {
+            kind: "send",
+            houseId: house.id,
+            body: action.body,
+            updateKind: action.messageKind,
+            ownerIds: targets.map((o) => o.id),
+          },
+        });
+        break;
+      }
+
       case "handover":
         // An email address is not needed to tell owners: it only changes the date
         // they see. Nobody is emailed from here.

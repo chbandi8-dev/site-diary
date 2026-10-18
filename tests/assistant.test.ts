@@ -35,6 +35,7 @@ const SAMPLE: Record<string, Record<string, unknown>> = {
   log_wet_day: { house: 1, date: "2026-10-18" },
   log_defect: { house: 1, location: "Bathroom", description: "Grout missing", target: "2026-11-02" },
   set_owner_contact: { house: 1, name: "Arny", phone: "0419 696 104" },
+  send_owner_message: { house: 1, body: "The roof starts Tuesday.", to: "Arny" },
   set_handover: { house: 1, from: "2027-05-01", to: "2027-05-31" },
   set_inspection: { house: 1, inspection: "frame", status: "booked", date: "2026-10-21" },
   set_house_status: { house: 1, status: "handed_over" },
@@ -173,4 +174,37 @@ test("anything an owner will read says so, and nothing emails from here", () => 
 test("an owner update is only ever proposed as a draft", () => {
   const p = proposeActions(run(call("draft_owner_update", { house: 1, body: "Frame is up." })), houseAt).actions[0];
   assert.match(p.footnote ?? "", /unsent/i);
+});
+
+test("a message he wants to send: kept as given, to one owner or everyone, never to a guess", () => {
+  const one = proposeActions(run(call("send_owner_message", { house: 1, body: "Roof starts Tuesday.", to: "Arny" })), houseAt);
+  assert.match(one.actions[0].title, /^Send this to Arny on WhatsApp$/);
+  assert.deepEqual(one.actions[0].payload.kind === "send" && one.actions[0].payload.ownerIds, [UUID(11)]);
+  assert.equal(one.actions[0].bodyField, "body", "the words are editable before anything happens");
+
+  const all = proposeActions(run(call("send_owner_message", { house: 1, body: "Frame is up." })), houseAt);
+  assert.match(all.actions[0].title, /^Send this to Arny & Priya on WhatsApp$/);
+  assert.equal(all.notes.length, 0);
+
+  const unknown = proposeActions(run(call("send_owner_message", { house: 1, body: "Hi", to: "Bob" })), houseAt);
+  assert.equal(unknown.actions[0].payload.kind === "send" && unknown.actions[0].payload.ownerIds.length, 2);
+  assert.match(unknown.notes[0], /Couldn't tell which owner "Bob"/);
+
+  const ambiguous = proposeActions(run(call("send_owner_message", { house: 1, body: "Hi", to: "Smith" })), houseAt);
+  assert.match(ambiguous.notes[0], /Couldn't tell which owner "Smith"/, "two Smiths: say so, do not pick one");
+});
+
+test("a message with no words, or no house, is nothing; a delay says it is held as a draft", () => {
+  assert.equal(run(call("send_owner_message", { house: 1, body: "   " })).length, 0);
+  assert.equal(run(call("send_owner_message", { body: "Hi" })).length, 0);
+  const delay = proposeActions(run(call("send_owner_message", { house: 1, body: "We're a week behind.", kind: "delay" })), houseAt).actions[0];
+  assert.match(delay.footnote ?? "", /saved as a draft first/i);
+  const odd = run(call("send_owner_message", { house: 1, body: "Hi", kind: "gossip" }))[0];
+  assert.ok(odd.kind === "send" && odd.messageKind === "message");
+});
+
+test("send is told apart from draft: draft_owner_update never carries a WhatsApp target", () => {
+  const d = proposeActions(run(call("draft_owner_update", { house: 1, body: "x" })), houseAt).actions[0];
+  assert.equal(d.payload.kind, "update");
+  assert.doesNotMatch(d.title, /WhatsApp/);
 });

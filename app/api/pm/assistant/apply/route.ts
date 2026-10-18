@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createHouse, NoStageTemplates } from "@/lib/create-house";
+import { queue, ownersOf, deliverNow } from "@/lib/notify";
 import { z } from "zod";
 import { payload, type Payload } from "@/lib/assistant-payload";
 import { refreshQuietly } from "@/lib/programme";
@@ -35,7 +36,11 @@ const day = (value: string) => new Date(`${value}T00:00:00.000Z`);
 
 const body = z.object({ actions: z.array(payload).min(1).max(20) });
 
-type Outcome = { ok: true; done: string; houseId?: string } | { ok: false; error: string };
+/** Set when the result is a message he still has to hand to WhatsApp. */
+type WhatsApp = { message: string; recipients: { name: string; phone: string | null }[] };
+type Outcome =
+  | { ok: true; done: string; houseId?: string; whatsapp?: WhatsApp }
+  | { ok: false; error: string };
 
 async function apply(action: Payload, userId: string): Promise<Outcome> {
   switch (action.kind) {
@@ -220,6 +225,63 @@ async function apply(action: Payload, userId: string): Promise<Outcome> {
           error: clash ? "That email already belongs to someone else." : "That one didn't save.",
         };
       }
+    }
+
+    case "send": {
+      const house = await prisma.house.findUnique({
+        where: { id: action.houseId },
+        select: { id: true, address: true },
+      });
+      if (!house) return { ok: false, error: "That house is gone." };
+
+      // Only people actually on this house, whatever ids came in.
+      const people = await prisma.houseOwner.findMany({
+        where: { houseId: house.id, ownerId: { in: action.ownerIds }, revokedAt: null },
+        select: { owner: { select: { name: true, phone: true } } },
+      });
+
+      // The same rules as sending from the house page: a delay is held back as a
+      // draft so he can ring first, anything else goes on their page now. He has
+      // read the words on the approval screen, which is what makes this his send.
+      const publish = action.updateKind !== "delay";
+      const now = new Date();
+      const update = await prisma.update.create({
+        data: {
+          houseId: house.id,
+          kind: action.updateKind,
+          body: action.body,
+          authorId: userId,
+          occurredAt: now,
+          publishedAt: publish ? now : null,
+          publishedById: publish ? userId : null,
+        },
+        select: { id: true },
+      });
+
+      if (publish) {
+        const recipients = await ownersOf(house.id);
+        await queue(
+          recipients.map((recipient) => ({
+            recipient,
+            dedupeKey: `update:${update.id}:${recipient.ownerId}`,
+            subject: `${house.address} — today's update`,
+            body: "",
+            houseId: house.id,
+            updateId: update.id,
+          }))
+        );
+        await deliverNow();
+      }
+
+      return {
+        ok: true,
+        done: publish ? "Posted — now send it on WhatsApp" : "Saved as a draft — ring them, then send",
+        houseId: house.id,
+        whatsapp: {
+          message: action.body,
+          recipients: people.map((p) => ({ name: p.owner.name, phone: p.owner.phone })),
+        },
+      };
     }
 
     case "handover": {

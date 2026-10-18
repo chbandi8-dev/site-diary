@@ -52,6 +52,14 @@ const CASES: Case[] = [
     expect: [{ kind: "stage", house: 2 }, { kind: "inspection", house: 2 }, { kind: "note", house: 2 }],
   },
   { say: "Frame's done", current: 1, expect: [{ kind: "stage", house: 1 }] },
+  { say: "Tell Arny at Mardi the roof starts Tuesday", expect: [{ kind: "send", house: 2, check: (a) => /Arny/i.test(a.to ?? "") && /roof/i.test(a.body) }] },
+  { say: "Send the owners at Bombala a message that the rendering is finished", expect: [{ kind: "send", house: 1 }] },
+  {
+    say: "This is the message I want to send to Sirajee: Hi Sirajee, the roof tiles are delivered and the roofers start Monday. Cheers.",
+    current: 3,
+    expect: [{ kind: "send", house: 3, check: (a) => /roofers start Monday/.test(a.body) && /Hi Sirajee/.test(a.body) }],
+  },
+  { say: "Draft the owners at Mardi something about the frame", expect: [{ kind: "update", house: 2 }] },
   // Things that must NOT become actions.
   { say: "Nice weather today", expect: [] },
   { say: "Frame's done", expect: [] }, // no house named, none open: do not guess
