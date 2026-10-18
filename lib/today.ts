@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { loadPace } from "@/lib/pace-load";
 
 export * from "./today-tasks";
 
@@ -21,7 +22,7 @@ export async function loadToday() {
   // week after, which is when a booking would have to be made.
   const horizon = new Date(now + 10 * 86_400_000);
 
-  const [houses, dueSoon] = await Promise.all([
+  const [houses, dueSoon, pace] = await Promise.all([
     prisma.house.findMany({
       relationLoadStrategy: "join",
       where: { status: { not: "handed_over" } },
@@ -59,6 +60,10 @@ export async function loadToday() {
           select: { occurredAt: true },
           orderBy: { occurredAt: "desc" },
           take: 1,
+        },
+        inspections: {
+          where: { status: { in: ["to_book", "booked", "failed"] } },
+          select: { id: true, kind: true, label: true, status: true, bookedFor: true },
         },
         decisions: {
           where: { status: "open" },
@@ -110,7 +115,8 @@ export async function loadToday() {
       orderBy: { dueBy: "asc" },
       take: 40,
     }),
+    loadPace(),
   ]);
 
-  return { houses, dueSoon };
+  return { houses, dueSoon, pace };
 }

@@ -7,10 +7,13 @@ import { currentPhase, hasProgramme, overdueStages, phaseOrder } from "@/lib/pha
 import {
   HardHat, Inbox, Clock, FileSignature, CloudRain, CalendarCheck,
   ArrowRight, Check, CircleAlert, PencilLine, EyeOff, CalendarClock,
-  TrendingUp, Layers, MessageSquare, Plus,
+  TrendingUp, Layers, MessageSquare, Plus, ClipboardCheck,
 } from "lucide-react";
 import { backfillProgrammes } from "@/lib/programme";
 import { buildTasks, loadToday, type Task, type TaskKind } from "@/lib/today";
+import { composeNudge } from "@/lib/nudge-text";
+import { siteUrl } from "@/lib/site-url";
+import ShareList from "@/components/admin/ShareList";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +55,7 @@ const TASK_ICON: Record<TaskKind, typeof Inbox> = {
   unseen: EyeOff,
   quiet: Clock,
   due: CalendarClock,
+  inspection: ClipboardCheck,
 };
 
 type Band = { title: string; note: string; tasks: Task[]; show: number };
@@ -65,7 +69,7 @@ export default async function Today() {
   // catch-up for older houses used to ride along here and hold the whole page
   // back; they now arrive behind it (see UpdatesTile and CatchUp), so the page
   // shows after this single read.
-  const { houses, dueSoon } = await loadToday();
+  const { houses, dueSoon, pace } = await loadToday();
 
   // ── The portfolio, rolled up ────────────────────────────────────────────
   // One row per phase of the build, split by whether the house is holding the
@@ -106,7 +110,18 @@ export default async function Today() {
 
   // ── Everything that wants him ───────────────────────────────────────────
   // One definition, shared with the evening message — see lib/today.ts.
-  const tasks = buildTasks(houses, dueSoon, now);
+  const tasks = buildTasks(houses, dueSoon, now, pace);
+  // The same list the evening email carries, so it can go out by WhatsApp when
+  // the email does not arrive. Null when nothing is late or due.
+  const shareable = composeNudge(tasks, {
+    origin: siteUrl(),
+    dateLabel: new Date().toLocaleDateString("en-AU", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      timeZone: "Australia/Sydney",
+    }),
+  });
 
   // Three bands rather than one long list. Twenty-two rows in a flat column all
   // look equally urgent, so the list stops being read at about row six; split
@@ -232,6 +247,7 @@ export default async function Today() {
               ? "Nothing outstanding. Every house is up to date and every owner has heard from you."
               : "Everything below is either yours to do, or somebody waiting on you."}
           </p>
+          {shareable && <ShareList message={shareable.body} />}
         </div>
 
         <div className="flex flex-col justify-center gap-1 sm:border-l sm:border-white/[0.07] sm:pl-7">

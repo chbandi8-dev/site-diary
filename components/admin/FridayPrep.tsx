@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Check, MessageCircle, Mic } from "lucide-react";
 import { toWhatsAppNumber } from "@/lib/phone";
 import { sendOnWhatsApp } from "@/lib/whatsapp";
+import FridayRun from "./FridayRun";
 
 type House = {
   id: string;
@@ -28,7 +29,7 @@ type House = {
  * twenty-five, and a save button per card is twenty-five extra taps for no
  * reason.
  */
-export default function FridayPrep({ houses }: { houses: House[] }) {
+export default function FridayPrep({ houses, weekKey }: { houses: House[]; weekKey: string }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState<Record<string, string>>(
     Object.fromEntries(houses.map((h) => [h.id, h.nextWeek ?? ""]))
@@ -36,6 +37,7 @@ export default function FridayPrep({ houses }: { houses: House[] }) {
   const [saved, setSaved] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [wa, setWa] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
   /** His changes to a house's WhatsApp wording; absent means the generated text. */
   const [waEdits, setWaEdits] = useState<Record<string, string>>({});
 
@@ -61,6 +63,24 @@ export default function FridayPrep({ houses }: { houses: House[] }) {
   return (
     <>
       {error && <p role="alert" className="mb-4 text-sm text-danger">{error}</p>}
+
+      {houses.some((h) => h.owners.length > 0) && (
+        <button
+          type="button"
+          onClick={() => setRunning(true)}
+          className="mb-5 flex min-h-[52px] w-full items-center justify-center gap-2 rounded-lg bg-emerald-500/90 px-6 font-medium text-dark hover:bg-emerald-400"
+        >
+          <MessageCircle size={16} aria-hidden="true" />
+          Send this week on WhatsApp, house by house
+        </button>
+      )}
+      {running && (
+        <FridayRun
+          houses={houses.map((h) => ({ id: h.id, address: h.address, owners: h.owners, message: h.message }))}
+          weekKey={weekKey}
+          onClose={() => setRunning(false)}
+        />
+      )}
 
       <ol className="flex flex-col gap-3">
         {houses.map((h) => (

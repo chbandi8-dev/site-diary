@@ -962,6 +962,8 @@ model Inspection {
   houseId      String           @map("house_id") @db.Uuid
   houseStageId String?          @map("house_stage_id") @db.Uuid
   kind         InspectionKind
+  /// What he calls it, for the ones the list does not name: "Engineer's inspection".
+  label        String?
   status       InspectionStatus @default(to_book)
   /// Principal certifier or council, whoever is attending.
   inspector    String?

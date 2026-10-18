@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { computeExpected } from "@/lib/expected";
+import { loadPace } from "@/lib/pace-load";
 import type { ForecastStage } from "@/lib/forecast";
 import { notFound } from "next/navigation";
 import Link from "next/link";
@@ -9,6 +10,7 @@ import QuickSend from "@/components/admin/QuickSend";
 import StageBoard from "@/components/admin/StageBoard";
 import HouseStatus from "@/components/admin/HouseStatus";
 import HouseTabs from "@/components/admin/HouseTabs";
+import Inspections from "@/components/admin/Inspections";
 import { OwnersTab, SiteTab, NotesTab, TabLoading } from "./tabs";
 import HouseSettings from "@/components/admin/HouseSettings";
 
@@ -22,7 +24,7 @@ export default async function HouseCapture({ params }: { params: { id: string } 
   // instead of after everything he might look at has been fetched.
   // The badge counts need only the route id, so they travel with the house
   // rather than after it.
-  const [house, openDecisions, drafts, openDefects] = await Promise.all([
+  const [house, openDecisions, drafts, openDefects, pace] = await Promise.all([
     prisma.house.findUnique({
     relationLoadStrategy: "join",
     where: { id: params.id },
@@ -40,6 +42,10 @@ export default async function HouseCapture({ params }: { params: { id: string } 
       handoverTo: true,
       startDate: true,
       targetHandover: true,
+      inspections: {
+        select: { id: true, kind: true, label: true, status: true, bookedFor: true, notes: true },
+        orderBy: [{ bookedFor: "asc" }, { createdAt: "asc" }],
+      },
       // Counts, not rows: the delete warning names what would be destroyed and
       // the tab badges show what is waiting, without loading any of it.
       _count: {
@@ -78,6 +84,7 @@ export default async function HouseCapture({ params }: { params: { id: string } 
     prisma.decision.count({ where: { houseId: params.id, status: "open" } }),
     prisma.update.count({ where: { houseId: params.id, publishedAt: null, deletedAt: null } }),
     prisma.defect.count({ where: { houseId: params.id, status: { not: "resolved" } } }),
+    loadPace(),
   ]);
 
   if (!house) notFound();
@@ -95,6 +102,7 @@ export default async function HouseCapture({ params }: { params: { id: string } 
           promised: house.targetHandover ?? house.handoverTo,
           wetDaysLost: house._count.weatherDays,
           stages: house.stages as unknown as ForecastStage[],
+          pace,
         });
 
   return (
@@ -133,6 +141,12 @@ export default async function HouseCapture({ params }: { params: { id: string } 
             }`}
           >
             {expected.summary}
+            {expected.pacedStages > 0 && (
+              <span className="block text-xs text-white/35">
+                Uses your own pace on {expected.pacedStages} stage
+                {expected.pacedStages === 1 ? "" : "s"}, the standard list on the rest.
+              </span>
+            )}
           </p>
         )}
         {underway.length > 0 && (
@@ -171,6 +185,18 @@ export default async function HouseCapture({ params }: { params: { id: string } 
         ]}
       >
         <div>
+          <Inspections
+            houseId={house.id}
+            items={house.inspections.map((i) => ({
+              id: i.id,
+              kind: i.kind,
+              label: i.label,
+              status: i.status,
+              bookedFor: i.bookedFor?.toISOString() ?? null,
+              notes: i.notes,
+            }))}
+          />
+
           <HouseStatus
                   houseId={house.id}
                   waitingOn={house.waitingOn}

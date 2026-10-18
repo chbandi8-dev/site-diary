@@ -44,8 +44,8 @@ export async function sendNudge(now = new Date()): Promise<{ sent: boolean; reas
   // the dashboard since they were rebuilt.
   await backfillProgrammes();
 
-  const { houses, dueSoon } = await loadToday();
-  const message = composeNudge(buildTasks(houses, dueSoon, now.getTime()), {
+  const { houses, dueSoon, pace } = await loadToday();
+  const message = composeNudge(buildTasks(houses, dueSoon, now.getTime(), pace), {
     origin: siteUrl(),
     dateLabel: new Intl.DateTimeFormat("en-AU", {
       timeZone: SYDNEY,

@@ -73,3 +73,15 @@ test("a late house's expected window rides under its line", () => {
   )!;
   assert.match(msg.body, /past due — 1 Test Street\n   Promised 31 Dec · expected 14–28 Feb/);
 });
+
+test("an inspection tomorrow is in the two-day section, a failed one in the late section", () => {
+  const msg = composeNudge(
+    [
+      { houseId: "h1", address: "1 Test Street", urgency: 6, label: "Frame inspection is tomorrow", detail: "x", kind: "inspection", days: 1 },
+      { houseId: "h2", address: "2 Test Street", urgency: 2, label: "Frame inspection failed", detail: "x", kind: "inspection" },
+    ],
+    { origin: "https://example.test", dateLabel: "Monday" }
+  )!;
+  assert.match(msg.body, /LATE, OR WAITING ON YOU \(1\)\n• Frame inspection failed/);
+  assert.match(msg.body, /IS IT BOOKED\? \(1\)\n• Frame inspection is tomorrow/);
+});

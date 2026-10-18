@@ -1,4 +1,5 @@
 import { forecast, type ForecastStage } from "./forecast";
+import { applyPace, type Pace } from "./pace";
 
 /**
  * Promised against expected, for the one person who needs to see both.
@@ -16,8 +17,9 @@ import { forecast, type ForecastStage } from "./forecast";
  * and nothing here changes what an owner sees — telling an owner the date has
  * moved is a decision he takes himself, from the forecast panel.
  *
- * Honest about its limit: it runs on typical stage durations, not on how fast
- * his own jobs have actually gone. It is an estimate, labelled as one.
+ * Honest about its limit: it runs on typical stage durations, except for the
+ * stages where his own finished jobs give enough to go on (see `lib/pace.ts`),
+ * which run at his pace. It is an estimate, labelled as one.
  */
 
 export type ExpectedInput = {
@@ -26,6 +28,8 @@ export type ExpectedInput = {
   promised: Date | null;
   wetDaysLost: number;
   stages: ForecastStage[];
+  /** What his own finished stages say each one takes. Omit for the standard list. */
+  pace?: Pace;
   today?: Date;
 };
 
@@ -38,6 +42,8 @@ export type Expected = {
   state: ExpectedState;
   /** Calendar days from the promise to the START of the window — only when late. */
   lateDays: number | null;
+  /** How many remaining stages ran on his own pace rather than the standard one. */
+  pacedStages: number;
   /** "14–28 Feb" */
   window: string;
   /** "about 9 weeks late", "inside the window — tight", "on track". */
@@ -74,9 +80,10 @@ function dateText(d: Date, today: Date): string {
 /** Null when there is nothing left before handover to forecast. */
 export function computeExpected(input: ExpectedInput): Expected | null {
   const today = input.today ?? new Date();
+  const { stages, paced } = applyPace(input.stages, input.pace);
   const result = forecast({
     startDate: input.startDate,
-    stages: input.stages,
+    stages,
     wetDaysLost: input.wetDaysLost,
     today,
   });
@@ -88,7 +95,7 @@ export function computeExpected(input: ExpectedInput): Expected | null {
 
   if (!promised) {
     return {
-      from, to, promised: null, state: "no_promise", lateDays: null, window, verdict: null,
+      from, to, promised: null, state: "no_promise", lateDays: null, window, verdict: null, pacedStages: paced,
       summary: `Expected ${window}`,
     };
   }
@@ -115,7 +122,7 @@ export function computeExpected(input: ExpectedInput): Expected | null {
   }
 
   return {
-    from, to, promised, state, lateDays, window, verdict,
+    from, to, promised, state, lateDays, window, verdict, pacedStages: paced,
     summary: `Promised ${dateText(promised, today)} · expected ${window} · ${verdict}`,
   };
 }

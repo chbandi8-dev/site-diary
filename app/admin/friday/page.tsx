@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireStaff } from "@/lib/auth-guard";
 import FridayPrep from "@/components/admin/FridayPrep";
-import { composeDigest } from "@/lib/digest-text";
+import { composeDigest, isoWeek } from "@/lib/digest-text";
 
 export const dynamic = "force-dynamic";
 
@@ -93,7 +93,7 @@ export default async function FridayPrepPage() {
         </p>
       </header>
 
-      <FridayPrep houses={rows} />
+      <FridayPrep houses={rows} weekKey={isoWeek(new Date())} />
     </div>
   );
 }

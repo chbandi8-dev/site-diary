@@ -26,7 +26,9 @@ export function composeNudge(
   opts: { origin: string; dateLabel: string }
 ): { subject: string; body: string; count: number } | null {
   const late = tasks.filter((t) => t.urgency <= 2);
-  const soon = tasks.filter((t) => t.kind === "due" && t.days !== undefined && t.days >= 0 && t.days <= 2);
+  const soon = tasks.filter(
+    (t) => (t.kind === "due" || t.kind === "inspection") && t.days !== undefined && t.days >= 0 && t.days <= 2
+  );
   if (late.length === 0 && soon.length === 0) return null;
 
   const week = tasks.filter((t) => t.urgency === 3 || t.urgency === 4).length;
@@ -45,7 +47,7 @@ export function composeNudge(
   const sections: string[] = [];
   if (late.length > 0) sections.push(`LATE, OR WAITING ON YOU (${late.length})\n${list(late)}`);
   if (soon.length > 0)
-    sections.push(`DUE IN THE NEXT TWO DAYS — IS IT BOOKED? (${soon.length})\n${list(soon)}`);
+    sections.push(`COMING UP IN THE NEXT TWO DAYS — IS IT BOOKED? (${soon.length})\n${list(soon)}`);
 
   const count = late.length + soon.length;
   const body = [

@@ -107,3 +107,36 @@ test("a late house says where it will really land; a house on time does not", ()
   ).find((t) => t.kind === "due")!;
   assert.equal(fine.expected, undefined);
 });
+
+const insp = (over: Record<string, unknown>) => ({
+  id: "i1",
+  kind: "frame",
+  label: null,
+  status: "booked",
+  bookedFor: new Date(NOW + DAY),
+  ...over,
+});
+const inspTasks = (i: unknown) => build([house({ inspections: [i] })]).filter((t) => t.kind === "inspection");
+
+test("a failed inspection is today's work; a booked one tomorrow is a heads-up", () => {
+  const failed = inspTasks(insp({ status: "failed" }))[0];
+  assert.equal(failed.urgency, 2);
+  assert.match(failed.label, /Frame inspection failed/);
+
+  const soon = inspTasks(insp({}))[0];
+  assert.equal(soon.urgency, 6);
+  assert.equal(soon.days, 1);
+  assert.match(soon.label, /Frame inspection is tomorrow/);
+});
+
+test("a booked inspection whose date has gone by asks for the result", () => {
+  const t = inspTasks(insp({ bookedFor: new Date(NOW - 2 * DAY) }))[0];
+  assert.equal(t.urgency, 3);
+  assert.match(t.label, /was 2 days ago — did it pass\?/);
+});
+
+test("passed ones, far-off ones and his own labels", () => {
+  assert.equal(inspTasks(insp({ status: "passed" })).length, 0);
+  assert.equal(inspTasks(insp({ bookedFor: new Date(NOW + 20 * DAY) })).length, 0);
+  assert.match(inspTasks(insp({ kind: "other", label: "Engineer's", status: "to_book", bookedFor: null }))[0].label, /^Engineer's inspection still to book$/);
+});

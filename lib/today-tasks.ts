@@ -1,6 +1,8 @@
 import type { loadToday } from "./today";
 import { computeExpected } from "./expected";
 import type { ForecastStage } from "./forecast";
+import type { Pace } from "./pace";
+import { daysUntil, inspectionName, whenText } from "./inspections";
 
 /**
  * What needs him today — one definition, read by two things.
@@ -16,7 +18,7 @@ import type { ForecastStage } from "./forecast";
 
 export const DAYS_QUIET_BEFORE_FLAG = 5;
 
-export type TaskKind = "report" | "decision" | "draft" | "unseen" | "quiet" | "due";
+export type TaskKind = "report" | "decision" | "draft" | "unseen" | "quiet" | "due" | "inspection";
 
 export type Task = {
   houseId: string;
@@ -37,7 +39,8 @@ type Today = Awaited<ReturnType<typeof loadToday>>;
 export function buildTasks(
   houses: Today["houses"],
   dueSoon: Today["dueSoon"],
-  now = Date.now()
+  now = Date.now(),
+  pace?: Pace
 ): Task[] {
   // ── Everything that wants him ───────────────────────────────────────────
   // Built per house, then flattened and sorted, so the list reads as a to-do
@@ -67,6 +70,52 @@ export function buildTasks(
         detail: `${d.question} — chase them`,
         kind: "decision",
       });
+    }
+
+    // The gates. A failed inspection stops work until it passes, so it is on
+    // today's list; one booked for the next few days is a heads-up; one whose
+    // date has gone by with no result is a question only he can answer.
+    for (const insp of h.inspections ?? []) {
+      const name = inspectionName(insp.kind, insp.label);
+      const days = insp.bookedFor ? daysUntil(insp.bookedFor, now) : null;
+      if (insp.status === "failed") {
+        tasks.push({
+          houseId: h.id,
+          address: h.address,
+          urgency: 2,
+          label: `${name} failed`,
+          detail: "Work is held until it passes — rebook it",
+          kind: "inspection",
+        });
+      } else if (insp.status === "booked" && days !== null && days < 0) {
+        tasks.push({
+          houseId: h.id,
+          address: h.address,
+          urgency: 3,
+          label: `${name} was ${whenText(days)} — did it pass?`,
+          detail: "Record the result so the next stage can start",
+          kind: "inspection",
+        });
+      } else if (insp.status === "booked" && days !== null && days <= 7) {
+        tasks.push({
+          houseId: h.id,
+          address: h.address,
+          urgency: 6,
+          label: `${name} is ${whenText(days)}`,
+          detail: "Booked — make sure the site is ready",
+          kind: "inspection",
+          days,
+        });
+      } else if (insp.status === "to_book") {
+        tasks.push({
+          houseId: h.id,
+          address: h.address,
+          urgency: 4,
+          label: `${name} still to book`,
+          detail: "They are usually booked a day or two ahead",
+          kind: "inspection",
+        });
+      }
     }
 
     if (h._count.updates > 0) {
@@ -174,6 +223,7 @@ export function buildTasks(
       promised: h.targetHandover ?? h.handoverTo,
       wetDaysLost: h._count.weatherDays,
       stages: h.stages as unknown as ForecastStage[],
+      pace,
       today: new Date(now),
     });
     if (e && e.state !== "on_track") {
